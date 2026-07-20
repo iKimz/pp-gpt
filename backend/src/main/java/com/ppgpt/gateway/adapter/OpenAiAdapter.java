@@ -1,0 +1,149 @@
+package com.ppgpt.gateway.adapter;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ppgpt.gateway.domain.Model;
+import com.ppgpt.gateway.dto.ChatRequest;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.server.ResponseStatusException;
+import reactor.core.publisher.Flux;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Adapter for standard OpenAI-compatible providers.
+ *
+ * <p>
+ * Credentials JSON: {@code {"apiKey": "sk-..."}}
+ *
+ * <p>
+ * Injects {@code Authorization: Bearer <apiKey>} and proxies to
+ * the model's {@code endpoint_url} verbatim.
+ *
+ * <p>
+ * Message order (per OpenAI spec):
+ * <ol>
+ * <li>{@code system} message (if systemPrompt is configured)</li>
+ * <li>Previous conversation turns (history, sliced by ChatService)</li>
+ * <li>New {@code user} message</li>
+ * </ol>
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class OpenAiAdapter implements AiProviderAdapter {
+
+    private final WebClient aiWebClient;
+    private final ObjectMapper objectMapper;
+
+    @Override
+    public String providerKey() {
+        return "OPENAI";
+    }
+
+    @Override
+    public Flux<String> streamChat(ChatRequest request, Model model, String decryptedCredentials) {
+        String apiKey = extractField(decryptedCredentials, "apiKey");
+
+        List<Map<String, String>> messages = buildMessages(request, model);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model.getModelName());
+        body.put("messages", messages);
+        body.put("temperature", model.getTemperature());
+        body.put("stream", true);
+
+        try {
+            log.debug("[OpenAI] Built request payload: {}", objectMapper.writeValueAsString(body));
+        } catch (Exception e) {
+            log.warn("[OpenAI] Could not serialize debug payload", e);
+        }
+
+        return aiWebClient.post()
+                .uri(model.getEndpointUrl())
+                .header("Authorization", "Bearer " + apiKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(
+                        s -> s.is4xxClientError() || s.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class)
+                                .defaultIfEmpty("No error body provided")
+                                .map(err -> new ResponseStatusException(resp.statusCode(),
+                                        "[OpenAI] provider error: " + err)))
+                .bodyToFlux(String.class)
+                .takeWhile(line -> !line.contains("[DONE]"))
+                .mapNotNull(line -> extractContent(line.trim()));
+    }
+
+    // ─── Message Builder ─────────────────────────────────────────────────────
+
+    static List<Map<String, String>> buildMessages(ChatRequest request, Model model) {
+        List<Map<String, String>> messages = new ArrayList<>();
+        // 1. System prompt (if configured)
+        if (model.getSystemPrompt() != null && !model.getSystemPrompt().isBlank()) {
+            messages.add(Map.of("role", "system", "content", model.getSystemPrompt()));
+        }
+        // 2. History (already sliced by ChatService)
+        if (request.getHistory() != null) {
+            for (Map<String, String> turn : request.getHistory()) {
+                String role = turn.get("role");
+                if (role == null || role.isBlank())
+                    role = "user";
+
+                String content = turn.get("content");
+                if (content == null)
+                    content = "";
+
+                messages.add(Map.of(
+                        "role", role,
+                        "content", content));
+            }
+        }
+        // 3. New user message
+        messages.add(Map.of("role", "user", "content", request.getMessage()));
+        return messages;
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private String extractField(String json, String field) {
+        try {
+            JsonNode node = objectMapper.readTree(json);
+            JsonNode val = node.path(field);
+            if (val.isMissingNode() || val.isNull()) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Missing '" + field + "' in credentials for OpenAI model");
+            }
+            return val.asText();
+        } catch (JsonProcessingException e) {
+            // Legacy plain-text key (backwards compat)
+            log.warn("Credentials are not JSON, treating as plain apiKey");
+            return json.trim();
+        }
+    }
+
+    private String extractContent(String json) {
+        try {
+            JsonNode node = objectMapper.readTree(json);
+            JsonNode delta = node.path("choices").path(0).path("delta").path("content");
+            if (!delta.isMissingNode() && !delta.isNull())
+                return delta.asText();
+            JsonNode msg = node.path("choices").path(0).path("message").path("content");
+            if (!msg.isMissingNode() && !msg.isNull())
+                return msg.asText();
+        } catch (JsonProcessingException e) {
+            log.trace("Non-JSON SSE chunk: {}", json);
+        }
+        return null;
+    }
+}

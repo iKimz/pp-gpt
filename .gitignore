@@ -1,0 +1,18 @@
+# Build Output & Dependencies
+backend/target/
+frontend/node_modules/
+frontend/dist/
+
+# Database & Storage Volumes
+data/
+
+# IDE & OS Junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# Environment & Secret Override Files
+*.env
+*.env.local

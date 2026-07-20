@@ -1,0 +1,84 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: pp-gpt-gateway
+
+  # ─── R2DBC / MariaDB ───────────────────────────────────────────────────────
+  r2dbc:
+    url: ${DB_URL:r2dbc:mariadb://localhost:3306/ppgpt}
+    username: ${DB_USER:ppgpt}
+    password: ${DB_PASS:ppgpt}
+    pool:
+      enabled: true
+      initial-size: 5
+      max-size: 20
+      max-idle-time: 30m
+      validation-query: SELECT 1
+
+  # ─── Schema Initialization ─────────────────────────────────────────────────
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+  # ─── Redis ─────────────────────────────────────────────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASS:}
+      timeout: 5s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+  # ─── Jackson ───────────────────────────────────────────────────────────────
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+# ─── Application Secrets ───────────────────────────────────────────────────
+app:
+  jwt:
+    # Min 32 chars for HMAC-SHA256. Override in prod via env var.
+    secret: ${JWT_SECRET:ppgpt-dev-secret-key-at-least-32-chars-long!}
+    expiry-ms: ${JWT_EXPIRY_MS:86400000}       # 24 hours
+    refresh-expiry-ms: ${JWT_REFRESH_MS:604800000}  # 7 days
+
+  encryption:
+    # 32 hex chars = 128-bit AES key (use 64 hex chars for AES-256)
+    # Override in prod with a securely generated key.
+    key: ${ENCRYPTION_KEY:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+
+  mock-ad:
+    enabled: ${MOCK_AD_ENABLED:true}
+
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:4173}
+
+# ─── Actuator ──────────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+
+# ─── Logging ───────────────────────────────────────────────────────────────
+logging:
+  level:
+    com.ppgpt.gateway: DEBUG
+    io.r2dbc.mariadb: INFO
+    org.springframework.security: INFO
+    org.springframework.data.r2dbc: INFO
+    reactor.netty: INFO

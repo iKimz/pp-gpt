@@ -1,0 +1,189 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* ─── Global base (Hiroshi Design System) ───────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: #fbf8ff;
+  color: #1a1b22;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6, .font-heading {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  color: #1a1b22;
+  letter-spacing: -0.01em;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #d0c6ab;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover { background: #ffd700; }
+
+/* ─── Cards & Surfaces (Hiroshi Level 1 Elevation) ──────────────────── */
+.glass {
+  background: #ffffff;
+  border: 1px solid #e8e7f1;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+}
+
+/* ─── Gradient / Accent Text ────────────────────────────────────────── */
+.gradient-text {
+  color: #1a1b22;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+}
+
+/* ─── Buttons (Hiroshi Primary Yellow #FFD700) ──────────────────────── */
+.btn-primary {
+  @apply px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-200;
+  background-color: #ffd700;
+  color: #1a1b22;
+  border: 1px solid #e9c400;
+  @apply hover:bg-[#e9c400] active:scale-95 shadow-sm;
+  @apply focus:outline-none focus:ring-2 focus:ring-[#ffd700] focus:ring-offset-2;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200;
+  background-color: #ffffff;
+  color: #1a1b22;
+  border: 1px solid #e8e7f1;
+  @apply hover:bg-[#f4f2fd] hover:text-[#1a1b22] active:scale-95;
+  @apply focus:outline-none focus:ring-2 focus:ring-[#ffd700];
+}
+
+.btn-danger {
+  @apply px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200;
+  background-color: #ffdad6;
+  color: #ba1a1a;
+  border: 1px solid #ffb4ab;
+  @apply hover:bg-[#ba1a1a] hover:text-white active:scale-95;
+}
+
+.btn-icon {
+  @apply p-2 rounded-lg transition-all duration-150;
+  color: #4d4732;
+  @apply hover:text-[#1a1b22] hover:bg-[#f4f2fd] active:scale-90;
+}
+
+/* ─── Inputs ────────────────────────────────────────────────────────── */
+.input-field {
+  @apply w-full px-4 py-2.5 rounded-lg text-sm;
+  background-color: #ffffff;
+  border: 1px solid #e8e7f1;
+  color: #1a1b22;
+  @apply placeholder-gray-400;
+  @apply focus:outline-none focus:border-[#ffd700] focus:ring-2 focus:ring-[#ffd700]/30;
+  @apply transition-all duration-150;
+}
+
+.label {
+  @apply block text-xs font-semibold text-[#4d4732] mb-1.5 uppercase tracking-wider;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ─── Prose (Markdown) ──────────────────────────────────────────────── */
+.prose-dark {
+  @apply prose prose-sm max-w-none text-[#1a1b22];
+}
+.prose-dark pre {
+  background-color: #1a1b22;
+  color: #f1effa;
+  border: 1px solid #2f3038;
+  @apply rounded-lg p-4;
+}
+.prose-dark code {
+  color: #705d00;
+  background-color: #f4f2fd;
+  border: 1px solid #e8e7f1;
+  @apply rounded px-1.5 py-0.5 text-xs font-mono;
+}
+
+/* ─── SSE typing cursor ─────────────────────────────────────────────── */
+.typing-cursor::after {
+  content: '▋';
+  display: inline-block;
+  animation: typing 0.8s step-end infinite;
+  color: #ffd700;
+  margin-left: 2px;
+}
+
+/* ─── Shimmer loader ────────────────────────────────────────────────── */
+.shimmer {
+  background: linear-gradient(90deg, #f4f2fd 25%, #e8e7f1 50%, #f4f2fd 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ─── Sidebar nav item ──────────────────────────────────────────────── */
+.nav-item {
+  @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium;
+  color: #4d4732;
+  @apply transition-all duration-150 cursor-pointer;
+  @apply hover:bg-[#f4f2fd] hover:text-[#1a1b22];
+}
+.nav-item.active {
+  background-color: #fff8d6;
+  color: #705d00;
+  border-left: 3px solid #ffd700;
+  font-weight: 600;
+}
+
+/* ─── Badges (Muted, Desaturated Tones per Hiroshi Spec) ────────────── */
+.badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+}
+.badge-green  { background-color: #e6f4ea; color: #137333; border: 1px solid #ceead6; }
+.badge-blue   { background-color: #e8f0fe; color: #1a73e8; border: 1px solid #c2e7ff; }
+.badge-purple { background-color: #f3e8ff; color: #7e22ce; border: 1px solid #e9d5ff; }
+.badge-orange { background-color: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; }
+.badge-red    { background-color: #ffdad6; color: #ba1a1a; border: 1px solid #ffb4ab; }
+.badge-gray   { background-color: #f4f2fd; color: #4d4732; border: 1px solid #e8e7f1; }
+
+/* ─── Data Tables ───────────────────────────────────────────────────── */
+.table-wrapper {
+  @apply overflow-x-auto rounded-xl border border-[#e8e7f1] bg-white shadow-sm;
+}
+table.data-table {
+  @apply w-full text-sm border-collapse;
+}
+.data-table thead tr {
+  background-color: #f4f2fd;
+  border-bottom: 1px solid #e8e7f1;
+}
+.data-table thead th {
+  @apply px-4 py-3.5 text-left text-xs font-semibold text-[#4d4732] uppercase tracking-wider;
+  font-family: 'Inter', sans-serif;
+}
+.data-table tbody tr {
+  border-bottom: 1px solid #eeedf7;
+  @apply hover:bg-[#fbf8ff] transition-colors;
+}
+.data-table tbody td {
+  @apply px-4 py-3.5 text-[#1a1b22];
+}
+
+/* ─── Page transition ───────────────────────────────────────────────── */
+.page-enter-active, .page-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.page-enter-from { opacity: 0; transform: translateY(8px); }
+.page-leave-to   { opacity: 0; transform: translateY(-8px); }
+
+/* ─── Modal overlay ─────────────────────────────────────────────────── */
+.modal-overlay {
+  @apply fixed inset-0 z-50 flex items-center justify-center;
+  background: rgba(26, 27, 34, 0.4);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.15s ease-out;
+}
