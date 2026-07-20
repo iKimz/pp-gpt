@@ -70,6 +70,10 @@ public class Model {
     @Builder.Default
     private String modelType = "GENERATION";
 
+    /** Indicates if the model supports image attachments (multimodal) */
+    @Column("supports_vision")
+    private boolean supportsVision;
+
     @Column("created_at")
     private LocalDateTime createdAt;
 }

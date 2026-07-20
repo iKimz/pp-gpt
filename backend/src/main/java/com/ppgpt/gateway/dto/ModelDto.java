@@ -46,4 +46,7 @@ public class ModelDto {
     /** Number of previous chat messages to send for context. Default: 10 */
     @Builder.Default
     private int maxHistoryMessages = 10;
+
+    /** Indicates if the model supports image attachments (multimodal) */
+    private boolean supportsVision;
 }

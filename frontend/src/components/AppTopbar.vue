@@ -61,6 +61,7 @@ onMounted(async () => {
   try {
     const { data } = await apiClient.get('/api/v1/chat/models')
     models.value = data // Already filtered by backend to be active and group-assigned
+    chatStore.availableModels = data
     if (models.value.length && !chatStore.selectedModelId) {
       chatStore.selectedModelId = models.value[0].id
     }

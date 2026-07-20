@@ -30,14 +30,14 @@ class OpenAiAdapterTest {
 
     @Test
     void buildMessages_noSystemPrompt_noHistory_singleUserMessage() {
-        List<Map<String, String>> msgs = OpenAiAdapter.buildMessages(requestWith("Hello", null), modelWith(null));
+        List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(requestWith("Hello", null), modelWith(null));
         assertThat(msgs).hasSize(1);
         assertThat(msgs.get(0)).containsEntry("role", "user").containsEntry("content", "Hello");
     }
 
     @Test
     void buildMessages_withSystemPrompt_firstMessageIsSystem() {
-        List<Map<String, String>> msgs = OpenAiAdapter.buildMessages(requestWith("Hi", null), modelWith("You are helpful."));
+        List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(requestWith("Hi", null), modelWith("You are helpful."));
         assertThat(msgs).hasSize(2);
         assertThat(msgs.get(0)).containsEntry("role", "system").containsEntry("content", "You are helpful.");
         assertThat(msgs.get(1)).containsEntry("role", "user");
@@ -45,7 +45,7 @@ class OpenAiAdapterTest {
 
     @Test
     void buildMessages_blankSystemPrompt_noSystemMessage() {
-        List<Map<String, String>> msgs = OpenAiAdapter.buildMessages(requestWith("Hello", null), modelWith("   "));
+        List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(requestWith("Hello", null), modelWith("   "));
         assertThat(msgs).hasSize(1);
         assertThat(msgs.get(0).get("role")).isEqualTo("user");
     }
@@ -55,7 +55,7 @@ class OpenAiAdapterTest {
         List<Map<String, String>> history = List.of(
                 Map.of("role", "user",      "content", "What is 2+2?"),
                 Map.of("role", "assistant", "content", "It is 4."));
-        List<Map<String, String>> msgs = OpenAiAdapter.buildMessages(
+        List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(
                 requestWith("What about 3+3?", history), modelWith("Be helpful."));
         assertThat(msgs).hasSize(4);
         assertThat(msgs.get(0).get("role")).isEqualTo("system");
@@ -67,15 +67,15 @@ class OpenAiAdapterTest {
     @Test
     void buildMessages_historyTurnWithNullRole_defaultsToUser() {
         List<Map<String, String>> history = List.of(Map.of("content", "previous message"));
-        List<Map<String, String>> msgs = OpenAiAdapter.buildMessages(requestWith("New", history), modelWith(null));
+        List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(requestWith("New", history), modelWith(null));
         assertThat(msgs.get(0).get("role")).isEqualTo("user");
     }
 
     @Test
     void buildMessages_historyTurnWithNullContent_defaultsToEmpty() {
         List<Map<String, String>> history = List.of(Map.of("role", "assistant"));
-        List<Map<String, String>> msgs = OpenAiAdapter.buildMessages(requestWith("Follow-up", history), modelWith(null));
-        assertThat(msgs.get(0).get("content")).isEmpty();
+        List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(requestWith("Follow-up", history), modelWith(null));
+        assertThat(msgs.get(0).get("content")).isEqualTo("");
     }
 
     @Test
@@ -83,10 +83,19 @@ class OpenAiAdapterTest {
         List<Map<String, String>> history = List.of(
                 Map.of("role", "user", "content", "old"),
                 Map.of("role", "assistant", "content", "reply"));
-        List<Map<String, String>> msgs = OpenAiAdapter.buildMessages(
+        List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(
                 requestWith("brand new question", history), modelWith("System prompt."));
-        Map<String, String> last = msgs.get(msgs.size() - 1);
-        assertThat(last.get("role")).isEqualTo("user");
-        assertThat(last.get("content")).isEqualTo("brand new question");
+        Object lastContent = msgs.get(msgs.size() - 1).get("content");
+        assertThat(lastContent).isEqualTo("brand new question");
+    }
+
+    @Test
+    void buildMessages_withImageAttachments_buildsMultimodalContentArray() {
+        ChatRequest req = requestWith("What is in this image?", null);
+        req.setImages(List.of("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="));
+        List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(req, modelWith(null));
+        assertThat(msgs).hasSize(1);
+        assertThat(msgs.get(0).get("role")).isEqualTo("user");
+        assertThat(msgs.get(0).get("content")).isInstanceOf(List.class);
     }
 }

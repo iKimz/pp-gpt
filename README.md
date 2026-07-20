@@ -7,6 +7,7 @@ A self-hosted, provider-agnostic AI gateway that proxies streaming LLM requests 
 ## Features
 
 - **Multi-provider streaming** — OpenAI, Azure OpenAI, and AWS Bedrock via a pluggable adapter pattern
+- **Multimodal support** — native image and file upload support for vision-capable models (OpenAI GPT-4o, Azure OpenAI, Claude 3 on AWS Bedrock) with pre-flight safety checks and UI image preview
 - **Credit quota system** — per-user daily credit limits enforced atomically via Redis Lua scripts, with MariaDB as durable source of truth
 - **Guardrail safety layer** — optional per-group safety model that evaluates prompts before forwarding to the primary model
 - **Admin dashboard** — full CRUD for models, user groups, credit rates, and users; paginated audit logs; executive analytics by group and model
@@ -154,7 +155,10 @@ docker compose up -d
 ```json
 {
   "modelId": "<uuid>",
-  "message": "Hello!",
+  "message": "Describe what is in this image.",
+  "images": [
+    "data:image/png;base64,iVBORw0KG..."
+  ],
   "sessionId": "<client-uuid>",
   "history": [
     { "role": "user",      "content": "Previous message" },
@@ -198,7 +202,8 @@ docker compose up -d
   "temperature": 0.7,
   "systemPrompt": "You are a helpful assistant.",
   "maxHistoryMessages": 10,
-  "modelType": "GENERATION"
+  "modelType": "GENERATION",
+  "supportsVision": true
 }
 ```
 

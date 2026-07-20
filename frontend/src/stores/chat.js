@@ -12,12 +12,17 @@ export const useChatStore = defineStore('chat', () => {
   const streamingContent= ref('')
   const isStreaming     = ref(false)
   const abortController = ref(null)
+  const availableModels = ref([])
   const selectedModelId = ref(null)
   const error           = ref(null)
 
   // ─── Getters ─────────────────────────────────────────────────────────────
   const activeSession = computed(() =>
     sessions.value.find(s => s.id === activeSessionId.value)
+  )
+
+  const selectedModel = computed(() =>
+    availableModels.value.find(m => m.id === selectedModelId.value)
   )
 
   // ─── Session management ───────────────────────────────────────────────────
@@ -121,7 +126,7 @@ export const useChatStore = defineStore('chat', () => {
    * Uses native fetch + ReadableStream so AbortController.abort()
    * severs the connection and triggers backend doFinally/doOnCancel.
    */
-  async function sendMessage(text) {
+  async function sendMessage(text, images = []) {
     if (!selectedModelId.value) {
       error.value = 'Please select a model first'
       return
@@ -136,6 +141,7 @@ export const useChatStore = defineStore('chat', () => {
       id: crypto.randomUUID(),
       role: 'user',
       content: text,
+      images: images || [],
       createdAt: new Date().toISOString()
     }
     messages.value.push(userMsg)
@@ -161,6 +167,7 @@ export const useChatStore = defineStore('chat', () => {
         {
           modelId:   selectedModelId.value,
           message:   text,
+          images:    images || [],
           sessionId: activeSessionId.value,
           history
         },
@@ -212,7 +219,7 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     sessions, activeSessionId, activeSession, messages,
-    streamingContent, isStreaming, selectedModelId, error,
+    streamingContent, isStreaming, availableModels, selectedModelId, selectedModel, error,
     newSession, selectSession, deleteSession, loadHistory, sendMessage, stopGeneration
   }
 })
