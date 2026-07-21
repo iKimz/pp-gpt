@@ -12,6 +12,7 @@ A self-hosted, provider-agnostic AI gateway that proxies streaming LLM requests 
 - **Guardrail safety layer** — optional per-group safety model that evaluates prompts before forwarding to the primary model
 - **Admin dashboard** — full CRUD for models, user groups, credit rates, and users; paginated audit logs; executive analytics by group and model
 - **JWT authentication** — LOCAL (BCrypt password) and AZURE_AD (mock LDAP / JIT provisioning) auth sources
+- **Model Context Protocol (MCP) & Tool Calling** — native integration with external MCP servers via JSON-RPC 2.0 (HTTP/SSE), featuring RFC 9207/8414 well-known OAuth discovery, RFC 7591 dynamic client registration, and PKCE S256 popup authentication
 - **AES-256-GCM credential encryption** — provider API keys are encrypted at rest and never returned in API responses
 - **Conversation history** — configurable sliding context window (`max_history_messages`) per model
 - **Token counting** — JTokkit BPE tokenizer with character-based fallback for accurate credit calculation
@@ -232,6 +233,16 @@ docker compose up -d
 | `POST` | `/api/v1/admin/users` | Create a user |
 | `PUT` | `/api/v1/admin/users/{id}` | Update user email / group / password |
 | `DELETE` | `/api/v1/admin/users/{id}` | Delete a user |
+
+#### MCP Servers
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/admin/mcp-servers` | List registered MCP servers |
+| `POST` | `/api/v1/admin/mcp-servers` | Register a new MCP server (Static API key / OAuth2) |
+| `PUT` | `/api/v1/admin/mcp-servers/{id}` | Update MCP server configuration |
+| `DELETE` | `/api/v1/admin/mcp-servers/{id}` | Delete an MCP server |
+| `POST` | `/api/v1/admin/mcp-servers/{id}/test` | Test MCP server connection & list available tools |
+| `GET` | `/api/v1/mcp/oauth/callback` | OAuth2 PKCE callback handler for external MCP authorization |
 
 #### Analytics & Audit
 | Method | Endpoint | Description |

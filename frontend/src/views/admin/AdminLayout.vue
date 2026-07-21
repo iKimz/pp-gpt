@@ -56,6 +56,7 @@ const navItems = [
   { to: '/admin/analytics', icon: '📊', label: 'Analytics'   },
   { to: '/admin/groups',    icon: '👥', label: 'Groups'      },
   { to: '/admin/models',    icon: '🤖', label: 'AI Models'   },
+  { to: '/admin/mcp-servers', icon: '🛠️', label: 'MCP Servers' },
   { to: '/admin/credits',   icon: '💳', label: 'Credit Rates'},
   { to: '/admin/users',     icon: '👤', label: 'Users'       },
   { to: '/admin/logs',      icon: '📋', label: 'Audit Logs'  },

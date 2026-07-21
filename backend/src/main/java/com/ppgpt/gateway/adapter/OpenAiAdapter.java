@@ -61,6 +61,9 @@ public class OpenAiAdapter implements AiProviderAdapter {
         body.put("messages", messages);
         body.put("temperature", model.getTemperature());
         body.put("stream", true);
+        if (request.getTools() != null && !request.getTools().isEmpty()) {
+            body.put("tools", request.getTools());
+        }
 
         try {
             log.debug("[OpenAI] Built request payload: {}", objectMapper.writeValueAsString(body));
@@ -95,18 +98,25 @@ public class OpenAiAdapter implements AiProviderAdapter {
         }
         // 2. History (already sliced by ChatService)
         if (request.getHistory() != null) {
-            for (Map<String, String> turn : request.getHistory()) {
-                String role = turn.get("role");
-                if (role == null || role.isBlank())
-                    role = "user";
+            for (Map<String, Object> turn : request.getHistory()) {
+                String role = turn.get("role") != null ? turn.get("role").toString() : "user";
 
-                String content = turn.get("content");
-                if (content == null)
-                    content = "";
+                Map<String, Object> msg = new LinkedHashMap<>();
+                msg.put("role", role);
 
-                messages.add(Map.of(
-                        "role", role,
-                        "content", content));
+                if (turn.containsKey("content")) {
+                    msg.put("content", turn.get("content"));
+                }
+                if (turn.containsKey("tool_call_id")) {
+                    msg.put("tool_call_id", turn.get("tool_call_id"));
+                }
+                if (turn.containsKey("name")) {
+                    msg.put("name", turn.get("name"));
+                }
+                if (turn.containsKey("tool_calls")) {
+                    msg.put("tool_calls", turn.get("tool_calls"));
+                }
+                messages.add(msg);
             }
         }
         // 3. New user message (text or multimodal array if images attached)
@@ -146,13 +156,27 @@ public class OpenAiAdapter implements AiProviderAdapter {
     private String extractContent(String json) {
         try {
             JsonNode node = objectMapper.readTree(json);
-            JsonNode delta = node.path("choices").path(0).path("delta").path("content");
-            if (!delta.isMissingNode() && !delta.isNull())
-                return delta.asText();
-            JsonNode msg = node.path("choices").path(0).path("message").path("content");
+            JsonNode choice = node.path("choices").path(0);
+            JsonNode delta = choice.path("delta");
+
+            JsonNode toolCalls = delta.path("tool_calls");
+            if (toolCalls.isMissingNode() || toolCalls.isNull()) {
+                toolCalls = choice.path("message").path("tool_calls");
+            }
+            if (!toolCalls.isMissingNode() && !toolCalls.isNull() && toolCalls.isArray() && toolCalls.size() > 0) {
+                Map<String, Object> chunk = new LinkedHashMap<>();
+                chunk.put("content", "");
+                chunk.put("tool_calls", objectMapper.treeToValue(toolCalls, Object.class));
+                return objectMapper.writeValueAsString(chunk);
+            }
+
+            JsonNode content = delta.path("content");
+            if (!content.isMissingNode() && !content.isNull())
+                return content.asText();
+            JsonNode msg = choice.path("message").path("content");
             if (!msg.isMissingNode() && !msg.isNull())
                 return msg.asText();
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             log.trace("Non-JSON SSE chunk: {}", json);
         }
         return null;

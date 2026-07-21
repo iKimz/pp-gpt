@@ -82,6 +82,7 @@ public class ChatService {
     private final R2dbcEntityTemplate entityTemplate;
     private final ApplicationEventPublisher eventPublisher;
     private final MeterRegistry meterRegistry;
+    private final McpServerService mcpServerService;
 
     // ─── Models ───────────────────────────────────────────────────────────────
 
@@ -215,12 +216,12 @@ public class ChatService {
                         String decryptedCredentials = cryptoService.decrypt(model.getCredentialsEncrypted());
 
                         // ── Slice history to max_history_messages ────────────────────
-                        List<Map<String, String>> rawHistory = request.getHistory() != null ? request.getHistory()
+                        List<Map<String, Object>> rawHistory = request.getHistory() != null ? request.getHistory()
                                 : Collections.emptyList();
                         // maxHistoryMessages in the model actually represents conversation TURNS (1
                         // turn = user + assistant = 2 messages)
                         int maxHistoryMessages = model.getMaxHistoryMessages() * 2;
-                        List<Map<String, String>> slicedHistory = rawHistory.size() <= maxHistoryMessages
+                        List<Map<String, Object>> slicedHistory = rawHistory.size() <= maxHistoryMessages
                                 ? rawHistory
                                 : rawHistory.subList(rawHistory.size() - maxHistoryMessages, rawHistory.size());
 
@@ -235,9 +236,16 @@ public class ChatService {
                         long startTime = System.currentTimeMillis();
 
                         // ── Delegate to provider-specific adapter ─────────────────────
-                        return adapterFactory.resolve(model.getProvider())
-                                .streamChat(request, model, decryptedCredentials)
-                                .timeout(Duration.ofMillis(model.getTimeoutMs()))
+                        Mono<List<com.ppgpt.gateway.dto.ToolDto>> toolsMono = (request.getTools() != null && !request.getTools().isEmpty())
+                                ? Mono.just(request.getTools())
+                                : mcpServerService.getActiveTools().collectList();
+
+                        return toolsMono.flatMapMany(activeTools -> {
+                            request.setTools(activeTools);
+                            return adapterFactory.resolve(model.getProvider())
+                                    .streamChat(request, model, decryptedCredentials);
+                        })
+                        .timeout(Duration.ofMillis(model.getTimeoutMs()))
                                 .onErrorResume(TimeoutException.class, ex -> {
                                     log.warn("[{}] Request timed out after {}ms", model.getProvider(),
                                             model.getTimeoutMs());
