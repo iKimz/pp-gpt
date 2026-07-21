@@ -121,13 +121,21 @@ CREATE TABLE IF NOT EXISTS dashboard_metrics (
 
 -- MCP Servers (Internal & External Tool Endpoints)
 CREATE TABLE IF NOT EXISTS mcp_servers (
-    id                   CHAR(36)     NOT NULL,
-    name                 VARCHAR(100) NOT NULL,
-    endpoint_url         VARCHAR(500) NOT NULL,
-    api_key_encrypted    TEXT         NULL COMMENT 'AES-256-GCM encrypted API key / Bearer token',
-    description          TEXT         NULL,
-    is_active            BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id                            CHAR(36)     NOT NULL,
+    name                          VARCHAR(100) NOT NULL,
+    endpoint_url                  VARCHAR(500) NOT NULL,
+    auth_type                     VARCHAR(20)  NOT NULL DEFAULT 'STATIC_KEY' COMMENT 'STATIC_KEY or OAUTH2',
+    api_key_encrypted             TEXT         NULL COMMENT 'AES-256-GCM encrypted API key / Bearer token',
+    oauth_authorize_url           VARCHAR(500) NULL,
+    oauth_token_url               VARCHAR(500) NULL,
+    oauth_client_id               VARCHAR(255) NULL,
+    oauth_client_secret_encrypted TEXT         NULL,
+    oauth_refresh_token_encrypted TEXT         NULL,
+    oauth_access_token_encrypted  TEXT         NULL,
+    oauth_expires_at              TIMESTAMP    NULL,
+    description                   TEXT         NULL,
+    is_active                     BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at                    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_mcp_servers PRIMARY KEY (id),
     INDEX idx_mcp_servers_active (is_active)
 );

@@ -24,8 +24,33 @@ public class McpServer implements Persistable<String> {
     @Column("endpoint_url")
     private String endpointUrl;
 
+    @Column("auth_type")
+    @Builder.Default
+    private String authType = "STATIC_KEY";
+
     @Column("api_key_encrypted")
     private String apiKeyEncrypted;
+
+    @Column("oauth_authorize_url")
+    private String oauthAuthorizeUrl;
+
+    @Column("oauth_token_url")
+    private String oauthTokenUrl;
+
+    @Column("oauth_client_id")
+    private String oauthClientId;
+
+    @Column("oauth_client_secret_encrypted")
+    private String oauthClientSecretEncrypted;
+
+    @Column("oauth_refresh_token_encrypted")
+    private String oauthRefreshTokenEncrypted;
+
+    @Column("oauth_access_token_encrypted")
+    private String oauthAccessTokenEncrypted;
+
+    @Column("oauth_expires_at")
+    private LocalDateTime oauthExpiresAt;
 
     private String description;
 

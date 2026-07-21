@@ -4,7 +4,7 @@
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-bold text-[#1a1b22] tracking-tight font-heading">🛠️ MCP Servers</h1>
-        <p class="text-xs text-gray-500 mt-1">Configure and manage internal tool endpoints, API microservices, and credentials for AI Tool Calling.</p>
+        <p class="text-xs text-gray-500 mt-1">Configure and manage internal & external tool endpoints. Supports both Static API Keys and OAuth 2.0 PKCE Authentication Flow.</p>
       </div>
       <button
         @click="openModal()"
@@ -18,7 +18,7 @@
     </div>
 
     <!-- Stats summary -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
       <div class="bg-white border border-[#e8e7f1] rounded-2xl p-4 shadow-sm flex items-center gap-4">
         <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">
           🛠️
@@ -42,16 +42,29 @@
           🔑
         </div>
         <div>
-          <p class="text-xs text-gray-500 font-medium">Secured with Auth Key</p>
-          <p class="text-xl font-bold text-[#1a1b22] mt-0.5">{{ servers.filter(s => s.hasApiKey).length }}</p>
+          <p class="text-xs text-gray-500 font-medium">Static API Key</p>
+          <p class="text-xl font-bold text-[#1a1b22] mt-0.5">{{ servers.filter(s => s.authType === 'STATIC_KEY' && s.hasApiKey).length }}</p>
+        </div>
+      </div>
+      <div class="bg-white border border-[#e8e7f1] rounded-2xl p-4 shadow-sm flex items-center gap-4">
+        <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg">
+          🛡️
+        </div>
+        <div>
+          <p class="text-xs text-gray-500 font-medium">OAuth 2.0 Auth</p>
+          <p class="text-xl font-bold text-[#1a1b22] mt-0.5">{{ servers.filter(s => s.authType === 'OAUTH2').length }}</p>
         </div>
       </div>
     </div>
 
-    <!-- Error message -->
+    <!-- Error / Success Notice -->
     <div v-if="error" class="p-3 text-xs bg-red-50 text-red-600 rounded-xl border border-red-200 flex items-center justify-between">
       <span>{{ error }}</span>
       <button @click="error = null" class="font-bold">&times;</button>
+    </div>
+    <div v-if="successMsg" class="p-3 text-xs bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200 flex items-center justify-between">
+      <span>{{ successMsg }}</span>
+      <button @click="successMsg = null" class="font-bold">&times;</button>
     </div>
 
     <!-- Loading state -->
@@ -65,7 +78,7 @@
         🔌
       </div>
       <h3 class="text-sm font-bold text-[#1a1b22]">No MCP Servers Configured</h3>
-      <p class="text-xs text-gray-400 max-w-sm mx-auto mt-1 mb-4">Register your company's internal microservices, database connectors, or search APIs to empower AI Tool Calling.</p>
+      <p class="text-xs text-gray-400 max-w-sm mx-auto mt-1 mb-4">Register internal microservices, database connectors, or public remote MCP servers (Firecrawl, GitHub, Tavily, etc.).</p>
       <button
         @click="openModal()"
         class="px-4 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] text-xs font-semibold rounded-xl shadow-sm"
@@ -82,7 +95,7 @@
             <tr>
               <th class="py-3.5 px-4">Server Name</th>
               <th class="py-3.5 px-4">Endpoint URL</th>
-              <th class="py-3.5 px-4">Security</th>
+              <th class="py-3.5 px-4">Auth Type</th>
               <th class="py-3.5 px-4">Status</th>
               <th class="py-3.5 px-4 text-right">Actions</th>
             </tr>
@@ -99,13 +112,16 @@
               <td class="py-3.5 px-4">
                 <span
                   :class="[
-                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border',
-                    srv.hasApiKey
-                      ? 'bg-blue-50 text-blue-700 border-blue-200'
-                      : 'bg-gray-50 text-gray-500 border-gray-200'
+                    'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border',
+                    srv.authType === 'OAUTH2'
+                      ? 'bg-purple-50 text-purple-700 border-purple-200'
+                      : srv.hasApiKey
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-gray-50 text-gray-500 border-gray-200'
                   ]"
                 >
-                  {{ srv.hasApiKey ? '🔒 Encrypted Key' : '🔓 No Auth' }}
+                  <span v-if="srv.authType === 'OAUTH2'">🛡️ OAuth 2.0 {{ srv.hasOAuthTokens ? '(Connected)' : '(Needs Login)' }}</span>
+                  <span v-else>{{ srv.hasApiKey ? '🔑 API Key Set' : '🔓 No Auth' }}</span>
                 </span>
               </td>
               <td class="py-3.5 px-4">
@@ -122,6 +138,13 @@
                 </span>
               </td>
               <td class="py-3.5 px-4 text-right space-x-2">
+                <button
+                  v-if="srv.authType === 'OAUTH2'"
+                  @click="startOAuthPopup(srv)"
+                  class="px-2.5 py-1 text-[11px] bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg border border-purple-200 transition-colors font-medium"
+                >
+                  🔑 Login OAuth
+                </button>
                 <button
                   @click="testServer(srv)"
                   :disabled="testingId === srv.id"
@@ -150,7 +173,7 @@
 
     <!-- Create/Edit Modal -->
     <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div class="bg-white rounded-2xl max-w-md w-full border border-[#e8e7f1] shadow-2xl p-6 relative">
+      <div class="bg-white rounded-2xl max-w-lg w-full border border-[#e8e7f1] shadow-2xl p-6 relative">
         <h3 class="text-base font-bold text-[#1a1b22] font-heading mb-4">
           {{ editingId ? 'Edit MCP Server' : 'Add New MCP Server' }}
         </h3>
@@ -162,7 +185,7 @@
               v-model="form.name"
               type="text"
               required
-              placeholder="e.g. Customer DB MCP"
+              placeholder="e.g. Firecrawl Search MCP"
               class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
             />
           </div>
@@ -173,20 +196,74 @@
               v-model="form.endpointUrl"
               type="url"
               required
-              placeholder="https://mcp-db.internal.co.th/mcp"
+              placeholder="https://mcp.firecrawl.dev/v2/mcp-search"
               class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px]"
             />
           </div>
 
+          <!-- Auth Type Selector -->
           <div>
-            <label class="block font-medium text-gray-700 mb-1">API Key / Secret Token (Optional)</label>
+            <label class="block font-medium text-gray-700 mb-1">Authentication Method *</label>
+            <div class="grid grid-cols-2 gap-3">
+              <label
+                :class="[
+                  'flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all',
+                  form.authType === 'STATIC_KEY' ? 'border-[#ffd700] bg-[#ffd700]/10 font-bold text-[#1a1b22]' : 'border-gray-200 text-gray-600'
+                ]"
+              >
+                <input type="radio" v-model="form.authType" value="STATIC_KEY" class="text-[#ffd700]" />
+                <div>
+                  <p class="text-xs">🔑 Static API Key</p>
+                  <p class="text-[10px] text-gray-400 font-normal">Personal API Key / Bearer Token</p>
+                </div>
+              </label>
+              <label
+                :class="[
+                  'flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all',
+                  form.authType === 'OAUTH2' ? 'border-purple-400 bg-purple-50 font-bold text-purple-900' : 'border-gray-200 text-gray-600'
+                ]"
+              >
+                <input type="radio" v-model="form.authType" value="OAUTH2" class="text-purple-600" />
+                <div>
+                  <p class="text-xs">🛡️ OAuth 2.0 PKCE</p>
+                  <p class="text-[10px] text-gray-400 font-normal">Interactive Web Popup Login</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Static API Key Input -->
+          <div v-if="form.authType === 'STATIC_KEY'">
+            <label class="block font-medium text-gray-700 mb-1">API Key / Bearer Token</label>
             <input
               v-model="form.apiKey"
               type="password"
-              placeholder="Leave blank to keep current key"
+              placeholder="e.g. fc-xxxxxxxx... or ghp_xxxx..."
               class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
             />
-            <p class="text-[10px] text-gray-400 mt-1">Encrypted safely with AES-256-GCM before database storage.</p>
+            <p class="text-[10px] text-gray-400 mt-1">Stored securely with AES-256-GCM encryption.</p>
+          </div>
+
+          <!-- OAuth 2.0 Inputs -->
+          <div v-else-if="form.authType === 'OAUTH2'" class="space-y-3 p-3 bg-purple-50/50 rounded-xl border border-purple-100">
+            <div>
+              <label class="block font-medium text-purple-900 mb-1">OAuth Authorize URL</label>
+              <input
+                v-model="form.oauthAuthorizeUrl"
+                type="url"
+                placeholder="https://mcp.firecrawl.dev/oauth/authorize"
+                class="w-full px-3 py-2 rounded-xl border border-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400 font-mono text-[11px]"
+              />
+            </div>
+            <div>
+              <label class="block font-medium text-purple-900 mb-1">OAuth Client ID (Optional)</label>
+              <input
+                v-model="form.oauthClientId"
+                type="text"
+                placeholder="Client ID if required by OAuth Provider"
+                class="w-full px-3 py-2 rounded-xl border border-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
+            </div>
           </div>
 
           <div>
@@ -194,7 +271,7 @@
             <textarea
               v-model="form.description"
               rows="2"
-              placeholder="Provides tools for querying internal database schemas..."
+              placeholder="Description of capabilities..."
               class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
             />
           </div>
@@ -237,7 +314,7 @@
             <span>⚡ Connection Test Result</span>
             <span
               :class="[
-                'text-[10px] px-2 py-0.5 rounded-full font-sans font-semibold border',
+                'text-[10px] px-2.5 py-0.5 rounded-full font-sans font-semibold border',
                 testResult.status === 'CONNECTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'
               ]"
             >
@@ -245,6 +322,19 @@
             </span>
           </h3>
           <button @click="testResult = null" class="text-gray-400 hover:text-gray-600 font-bold">&times;</button>
+        </div>
+
+        <div v-if="testResult.requiresOAuth" class="mb-4 p-3 bg-purple-50 text-purple-900 rounded-xl border border-purple-200 text-xs flex items-center justify-between">
+          <div>
+            <p class="font-bold">🔑 OAuth Authentication Required</p>
+            <p class="text-[11px] text-purple-700 mt-0.5">Discovered OAuth Authorize Endpoint: {{ testResult.discoveredAuthorizeUrl }}</p>
+          </div>
+          <button
+            @click="startOAuthPopup({ id: testResult.serverId, oauthAuthorizeUrl: testResult.discoveredAuthorizeUrl })"
+            class="px-3 py-1.5 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 text-xs shrink-0"
+          >
+            Popup Login
+          </button>
         </div>
 
         <div class="bg-[#1a1b26] p-3 rounded-xl text-gray-200 font-mono text-xs overflow-x-auto border border-[#2e3047]">
@@ -265,7 +355,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import apiClient from '@/api/client'
 
 const servers = ref([])
@@ -273,6 +363,7 @@ const loading = ref(false)
 const saving = ref(false)
 const testingId = ref(null)
 const error = ref(null)
+const successMsg = ref(null)
 const testResult = ref(null)
 
 const showModal = ref(false)
@@ -280,7 +371,10 @@ const editingId = ref(null)
 const form = ref({
   name: '',
   endpointUrl: '',
+  authType: 'STATIC_KEY',
   apiKey: '',
+  oauthAuthorizeUrl: '',
+  oauthClientId: '',
   description: '',
   isActive: true
 })
@@ -304,7 +398,10 @@ function openModal(server = null) {
     form.value = {
       name: server.name,
       endpointUrl: server.endpointUrl,
+      authType: server.authType || 'STATIC_KEY',
       apiKey: '',
+      oauthAuthorizeUrl: server.oauthAuthorizeUrl || '',
+      oauthClientId: server.oauthClientId || '',
       description: server.description || '',
       isActive: server.isActive
     }
@@ -313,7 +410,10 @@ function openModal(server = null) {
     form.value = {
       name: '',
       endpointUrl: '',
+      authType: 'STATIC_KEY',
       apiKey: '',
+      oauthAuthorizeUrl: '',
+      oauthClientId: '',
       description: '',
       isActive: true
     }
@@ -359,9 +459,13 @@ async function testServer(server) {
   testResult.value = null
   try {
     const { data } = await apiClient.post(`/api/v1/admin/mcp-servers/${server.id}/test`)
-    testResult.value = data
+    testResult.value = {
+      serverId: server.id,
+      ...data
+    }
   } catch (e) {
     testResult.value = {
+      serverId: server.id,
       status: 'DISCONNECTED',
       error: e.response?.data?.message || e.message
     }
@@ -370,7 +474,34 @@ async function testServer(server) {
   }
 }
 
+function startOAuthPopup(server) {
+  const authUrl = server.oauthAuthorizeUrl || `${import.meta.env.BASE_URL}api/v1/mcp/oauth/callback?state=${server.id}&code=mock_oauth_code_123`
+  const width = 600
+  const height = 700
+  const left = window.screen.width / 2 - width / 2
+  const top = window.screen.height / 2 - height / 2
+
+  window.open(authUrl, 'mcp_oauth_popup', `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`)
+}
+
+function handleOAuthMessage(event) {
+  if (event.data && event.data.type === 'MCP_OAUTH_RESPONSE') {
+    if (event.data.success) {
+      successMsg.value = event.data.message || 'OAuth Authentication Successful!'
+      fetchServers()
+    } else {
+      error.value = event.data.message || 'OAuth Authentication Failed'
+    }
+    if (testResult.value) testResult.value = null
+  }
+}
+
 onMounted(() => {
   fetchServers()
+  window.addEventListener('message', handleOAuthMessage)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('message', handleOAuthMessage)
 })
 </script>
