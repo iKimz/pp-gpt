@@ -14,8 +14,10 @@ import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +36,7 @@ public class McpServerService {
     private final McpServerRepository mcpServerRepository;
     private final CryptoService cryptoService;
     private final WebClient aiWebClient;
+    private final ObjectMapper objectMapper;
 
     public static class OAuthDiscoveryResult {
         public String authorizeUrl;
@@ -194,7 +197,8 @@ public class McpServerService {
                 .flatMap(server -> {
                     WebClient.RequestBodySpec spec = aiWebClient.post()
                             .uri(server.getEndpointUrl())
-                            .contentType(MediaType.APPLICATION_JSON);
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("Accept", "application/json, text/event-stream");
 
                     if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
                         String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
@@ -249,11 +253,16 @@ public class McpServerService {
                                             .defaultIfEmpty(createUnauthorizedResponse(status.value(), server.getOauthAuthorizeUrl(), server.getOauthClientId()));
                                 }
 
-                                return response.bodyToMono(Map.class)
-                                        .map(body -> Map.<String, Object>of(
-                                                "status", "CONNECTED",
-                                                "response", body
-                                        ));
+                                return response.bodyToFlux(String.class)
+                                        .collectList()
+                                        .map(lines -> String.join("\n", lines))
+                                        .map(rawBody -> {
+                                            Map<String, Object> bodyMap = parseJsonResponse(rawBody);
+                                            return Map.<String, Object>of(
+                                                    "status", "CONNECTED",
+                                                    "response", bodyMap.isEmpty() ? rawBody : bodyMap
+                                            );
+                                        });
                             })
                             .timeout(Duration.ofSeconds(5))
                             .onErrorResume(err -> Mono.just(Map.of(
@@ -278,6 +287,27 @@ public class McpServerService {
         return resMap;
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseJsonResponse(String rawBody) {
+        if (rawBody == null || rawBody.isBlank()) return Collections.emptyMap();
+        try {
+            String jsonStr = rawBody.trim();
+            if (jsonStr.contains("data:")) {
+                String[] lines = jsonStr.split("\n");
+                for (String line : lines) {
+                    if (line.startsWith("data:")) {
+                        jsonStr = line.substring(5).trim();
+                        break;
+                    }
+                }
+            }
+            return objectMapper.readValue(jsonStr, Map.class);
+        } catch (Exception e) {
+            log.warn("Failed to parse MCP response JSON: {}", e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
     public Mono<McpServerDto> saveOAuthTokens(String serverId, String accessToken, String refreshToken, Long expiresInSeconds) {
         return mcpServerRepository.findById(serverId)
                 .flatMap(server -> {
@@ -294,6 +324,56 @@ public class McpServerService {
                     return mcpServerRepository.save(server);
                 })
                 .map(this::toDto);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Flux<com.ppgpt.gateway.dto.ToolDto> getActiveTools() {
+        return mcpServerRepository.findByIsActiveTrue()
+                .flatMap(server -> {
+                    WebClient.RequestBodySpec spec = aiWebClient.post()
+                            .uri(server.getEndpointUrl())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("Accept", "application/json, text/event-stream");
+
+                    if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
+                        String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
+                        spec.header("Authorization", "Bearer " + rawKey);
+                    } else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
+                        String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
+                        spec.header("Authorization", "Bearer " + rawToken);
+                    }
+
+                    Map<String, Object> jsonRpcBody = Map.of(
+                            "jsonrpc", "2.0",
+                            "method", "tools/list",
+                            "id", 1
+                    );
+
+                    return spec.bodyValue(jsonRpcBody)
+                            .retrieve()
+                            .bodyToFlux(String.class)
+                            .collectList()
+                            .map(lines -> String.join("\n", lines))
+                            .timeout(Duration.ofSeconds(3))
+                            .flatMapMany(rawBody -> {
+                                Map<String, Object> resp = parseJsonResponse(rawBody);
+                                Map<String, Object> result = (Map<String, Object>) resp.get("result");
+                                if (result != null && result.containsKey("tools")) {
+                                    List<Map<String, Object>> toolsList = (List<Map<String, Object>>) result.get("tools");
+                                    return Flux.fromIterable(toolsList)
+                                            .map(t -> new com.ppgpt.gateway.dto.ToolDto(
+                                                    "function",
+                                                    new com.ppgpt.gateway.dto.ToolDto.FunctionDef(
+                                                            (String) t.get("name"),
+                                                            (String) t.get("description"),
+                                                            (Map<String, Object>) t.get("inputSchema")
+                                                    )
+                                            ));
+                                }
+                                return Flux.empty();
+                            })
+                            .onErrorResume(e -> Flux.empty());
+                });
     }
 
     private McpServerDto toDto(McpServer server) {

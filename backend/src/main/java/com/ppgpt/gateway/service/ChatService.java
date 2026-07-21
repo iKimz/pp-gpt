@@ -82,6 +82,7 @@ public class ChatService {
     private final R2dbcEntityTemplate entityTemplate;
     private final ApplicationEventPublisher eventPublisher;
     private final MeterRegistry meterRegistry;
+    private final McpServerService mcpServerService;
 
     // ─── Models ───────────────────────────────────────────────────────────────
 
@@ -235,9 +236,16 @@ public class ChatService {
                         long startTime = System.currentTimeMillis();
 
                         // ── Delegate to provider-specific adapter ─────────────────────
-                        return adapterFactory.resolve(model.getProvider())
-                                .streamChat(request, model, decryptedCredentials)
-                                .timeout(Duration.ofMillis(model.getTimeoutMs()))
+                        Mono<List<com.ppgpt.gateway.dto.ToolDto>> toolsMono = (request.getTools() != null && !request.getTools().isEmpty())
+                                ? Mono.just(request.getTools())
+                                : mcpServerService.getActiveTools().collectList();
+
+                        return toolsMono.flatMapMany(activeTools -> {
+                            request.setTools(activeTools);
+                            return adapterFactory.resolve(model.getProvider())
+                                    .streamChat(request, model, decryptedCredentials);
+                        })
+                        .timeout(Duration.ofMillis(model.getTimeoutMs()))
                                 .onErrorResume(TimeoutException.class, ex -> {
                                     log.warn("[{}] Request timed out after {}ms", model.getProvider(),
                                             model.getTimeoutMs());

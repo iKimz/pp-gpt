@@ -42,6 +42,7 @@ public class SecurityConfig {
                 .authorizeExchange(auth -> auth
                         // Public endpoints
                         .pathMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
+                        .pathMatchers("/api/v1/mcp/oauth/callback").permitAll()
                         .pathMatchers("/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics").permitAll()
                         // Admin only
                         .pathMatchers("/api/v1/admin/**").hasAuthority("ROLE_ADMIN")

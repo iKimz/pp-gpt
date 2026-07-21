@@ -281,8 +281,9 @@
 
     <!-- Connection Test Result Modal -->
     <div v-if="testResult" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div class="bg-white rounded-2xl max-w-lg w-full border border-[#e8e7f1] shadow-2xl p-6">
-        <div class="flex items-center justify-between mb-4">
+      <div class="bg-white rounded-2xl max-w-2xl w-full border border-[#e8e7f1] shadow-2xl p-6 max-h-[85vh] flex flex-col overflow-hidden">
+        <!-- Header -->
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#e8e7f1] shrink-0">
           <h3 class="text-base font-bold text-[#1a1b22] font-heading flex items-center gap-2">
             <span>⚡ Connection Test Result</span>
             <span
@@ -294,32 +295,36 @@
               {{ testResult.status }}
             </span>
           </h3>
-          <button @click="testResult = null" class="text-gray-400 hover:text-gray-600 font-bold">&times;</button>
+          <button @click="testResult = null" class="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center font-bold text-base transition-colors">&times;</button>
         </div>
 
-        <div v-if="testResult.requiresOAuth" class="mb-4 p-3 bg-purple-50 text-purple-900 rounded-xl border border-purple-200 text-xs flex items-center justify-between">
-          <div>
-            <p class="font-bold">🔑 OAuth Authentication Required</p>
-            <p class="text-[11px] text-purple-700 mt-0.5">Discovered OAuth Authorize Endpoint: {{ testResult.discoveredAuthorizeUrl }}</p>
+        <!-- Body Content (Scrollable) -->
+        <div class="flex-1 overflow-y-auto space-y-4 pr-1">
+          <div v-if="testResult.requiresOAuth" class="p-3 bg-purple-50 text-purple-900 rounded-xl border border-purple-200 text-xs flex items-center justify-between">
+            <div>
+              <p class="font-bold">🔑 OAuth Authentication Required</p>
+              <p class="text-[11px] text-purple-700 mt-0.5">Discovered OAuth Authorize Endpoint: {{ testResult.discoveredAuthorizeUrl }}</p>
+            </div>
+            <button
+              @click="startOAuthPopup({ id: testResult.serverId, oauthAuthorizeUrl: testResult.discoveredAuthorizeUrl, oauthClientId: testResult.oauthClientId })"
+              class="px-3 py-1.5 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 text-xs shrink-0"
+            >
+              Popup Login
+            </button>
           </div>
-          <button
-            @click="startOAuthPopup({ id: testResult.serverId, oauthAuthorizeUrl: testResult.discoveredAuthorizeUrl })"
-            class="px-3 py-1.5 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 text-xs shrink-0"
-          >
-            Popup Login
-          </button>
+
+          <div class="bg-[#1a1b26] p-4 rounded-xl text-gray-200 font-mono text-xs overflow-auto max-h-[50vh] border border-[#2e3047] shadow-inner">
+            <pre class="whitespace-pre-wrap break-all">{{ JSON.stringify(testResult, null, 2) }}</pre>
+          </div>
         </div>
 
-        <div class="bg-[#1a1b26] p-3 rounded-xl text-gray-200 font-mono text-xs overflow-x-auto border border-[#2e3047]">
-          <pre class="whitespace-pre-wrap break-all">{{ JSON.stringify(testResult, null, 2) }}</pre>
-        </div>
-
-        <div class="mt-4 flex justify-end">
+        <!-- Footer -->
+        <div class="pt-3 mt-3 border-t border-[#e8e7f1] flex justify-end shrink-0">
           <button
             @click="testResult = null"
-            class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl"
+            class="px-5 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] text-xs font-bold rounded-xl shadow-sm transition-all"
           >
-            Close
+            Close Result
           </button>
         </div>
       </div>
