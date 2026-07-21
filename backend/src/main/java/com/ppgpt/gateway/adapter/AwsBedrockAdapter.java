@@ -152,9 +152,38 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
             }
         }
 
-        bedrockMessages.add(Map.of(
-                "role", "user",
-                "content", request.getMessage()));
+        if (request.getImages() != null && !request.getImages().isEmpty()) {
+            List<Map<String, Object>> contentBlocks = new ArrayList<>();
+            if (request.getMessage() != null && !request.getMessage().isBlank()) {
+                contentBlocks.add(Map.of("type", "text", "text", request.getMessage()));
+            }
+            for (String imgDataUrl : request.getImages()) {
+                String mediaType = "image/png";
+                String base64Data = imgDataUrl;
+                if (imgDataUrl.contains(";base64,")) {
+                    String[] parts = imgDataUrl.split(";base64,", 2);
+                    if (parts[0].startsWith("data:")) {
+                        mediaType = parts[0].substring(5);
+                    }
+                    base64Data = parts[1];
+                }
+                contentBlocks.add(Map.of(
+                        "type", "image",
+                        "source", Map.of(
+                                "type", "base64",
+                                "media_type", mediaType,
+                                "data", base64Data
+                        )
+                ));
+            }
+            bedrockMessages.add(Map.of(
+                    "role", "user",
+                    "content", contentBlocks));
+        } else {
+            bedrockMessages.add(Map.of(
+                    "role", "user",
+                    "content", request.getMessage()));
+        }
 
         Map<String, Object> bodyMap = new LinkedHashMap<>();
 

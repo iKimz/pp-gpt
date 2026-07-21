@@ -54,7 +54,7 @@ public class OpenAiAdapter implements AiProviderAdapter {
     public Flux<String> streamChat(ChatRequest request, Model model, String decryptedCredentials) {
         String apiKey = extractField(decryptedCredentials, "apiKey");
 
-        List<Map<String, String>> messages = buildMessages(request, model);
+        List<Map<String, Object>> messages = buildMessages(request, model);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model.getModelName());
@@ -87,8 +87,8 @@ public class OpenAiAdapter implements AiProviderAdapter {
 
     // ─── Message Builder ─────────────────────────────────────────────────────
 
-    static List<Map<String, String>> buildMessages(ChatRequest request, Model model) {
-        List<Map<String, String>> messages = new ArrayList<>();
+    static List<Map<String, Object>> buildMessages(ChatRequest request, Model model) {
+        List<Map<String, Object>> messages = new ArrayList<>();
         // 1. System prompt (if configured)
         if (model.getSystemPrompt() != null && !model.getSystemPrompt().isBlank()) {
             messages.add(Map.of("role", "system", "content", model.getSystemPrompt()));
@@ -109,8 +109,19 @@ public class OpenAiAdapter implements AiProviderAdapter {
                         "content", content));
             }
         }
-        // 3. New user message
-        messages.add(Map.of("role", "user", "content", request.getMessage()));
+        // 3. New user message (text or multimodal array if images attached)
+        if (request.getImages() != null && !request.getImages().isEmpty()) {
+            List<Map<String, Object>> contentParts = new ArrayList<>();
+            if (request.getMessage() != null && !request.getMessage().isBlank()) {
+                contentParts.add(Map.of("type", "text", "text", request.getMessage()));
+            }
+            for (String imgUrl : request.getImages()) {
+                contentParts.add(Map.of("type", "image_url", "image_url", Map.of("url", imgUrl)));
+            }
+            messages.add(Map.of("role", "user", "content", contentParts));
+        } else {
+            messages.add(Map.of("role", "user", "content", request.getMessage()));
+        }
         return messages;
     }
 

@@ -7,6 +7,9 @@ spring:
   application:
     name: pp-gpt-gateway
 
+  codec:
+    max-in-memory-size: 32MB
+
   # ─── R2DBC / MariaDB ───────────────────────────────────────────────────────
   r2dbc:
     url: ${DB_URL:r2dbc:mariadb://localhost:3306/ppgpt}

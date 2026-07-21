@@ -42,10 +42,14 @@ CREATE TABLE IF NOT EXISTS models (
     system_prompt        TEXT         NULL,
     max_history_messages INT          NOT NULL DEFAULT 10,
     model_type           VARCHAR(20)  NOT NULL DEFAULT 'GENERATION',
+    supports_vision      BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_models PRIMARY KEY (id),
     INDEX idx_models_active (is_active)
 );
+
+ALTER TABLE models ADD COLUMN IF NOT EXISTS supports_vision BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE models SET supports_vision = TRUE WHERE provider IN ('AZURE', 'OPENAI') AND (model_name LIKE '%gpt4%' OR model_name LIKE '%gpt-4%' OR model_name LIKE '%mini%');
 
 
 -- User Groups Updates

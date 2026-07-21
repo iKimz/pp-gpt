@@ -39,9 +39,9 @@ public class WebClientConfig {
                         .addHandlerLast(new ReadTimeoutHandler(120, TimeUnit.SECONDS))
                         .addHandlerLast(new WriteTimeoutHandler(30, TimeUnit.SECONDS)));
 
-        // 10MB buffer for SSE streaming
+        // 32MB buffer for SSE streaming and multimodal image payloads
         ExchangeStrategies strategies = ExchangeStrategies.builder()
-                .codecs(config -> config.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
+                .codecs(config -> config.defaultCodecs().maxInMemorySize(32 * 1024 * 1024))
                 .build();
 
         return WebClient.builder()

@@ -99,6 +99,7 @@ public class ChatService {
                         .modelName(m.getModelName())
                         .endpointUrl(m.getEndpointUrl())
                         .isActive(m.isActive())
+                        .supportsVision(m.isSupportsVision())
                         .build());
     }
 
@@ -111,16 +112,24 @@ public class ChatService {
                 .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.FORBIDDEN, "User has no group")))
                 .flatMap(group -> modelRepository.findById(request.getModelId())
                         .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Model not found")))
-                        .flatMap(model ->
-                        // Verify group has access to this model
-                        groupModelAccessRepository.existsByGroupIdAndModelId(group.getId(), model.getId())
-                                .filter(Boolean::booleanValue)
-                                .switchIfEmpty(Mono.error(new ResponseStatusException(
-                                        HttpStatus.FORBIDDEN, "Your group does not have access to this model")))
-                                .flatMap(ok ->
-                                // Load credit rate
-                                creditRateRepository.findByModelId(model.getId())
-                                        .defaultIfEmpty(defaultRate(model.getId()))
+                        .flatMap(model -> {
+                            // Pre-flight check: Image attachments validation
+                            if (request.getImages() != null && !request.getImages().isEmpty() && !model.isSupportsVision()) {
+                                return Mono.error(new ResponseStatusException(
+                                        HttpStatus.BAD_REQUEST,
+                                        "Model '" + (model.getName() != null && !model.getName().isBlank() ? model.getName() : model.getModelName())
+                                                + "' does not support image or file attachments"));
+                            }
+
+                            // Verify group has access to this model
+                            return groupModelAccessRepository.existsByGroupIdAndModelId(group.getId(), model.getId())
+                                    .filter(Boolean::booleanValue)
+                                    .switchIfEmpty(Mono.error(new ResponseStatusException(
+                                            HttpStatus.FORBIDDEN, "Your group does not have access to this model")))
+                                    .flatMap(ok ->
+                                    // Load credit rate
+                                    creditRateRepository.findByModelId(model.getId())
+                                            .defaultIfEmpty(defaultRate(model.getId()))
                                         .flatMap(rate -> {
                                             // Estimate input tokens (JTokkit with char-fallback)
                                             int inputTokens = tokenizerUtil.countTokens(
@@ -142,7 +151,8 @@ public class ChatService {
                                                             "estimatedCredits", estimatedCredits,
                                                             "inMult", rate.getInputMultiplier(),
                                                             "outMult", rate.getOutputMultiplier()));
-                                        })))
+                                        }));
+                        })
                         .map(ctx -> Map.entry(group, ctx)))
                 .flatMapMany(entry -> {
                     UserGroup group = (UserGroup) entry.getKey();

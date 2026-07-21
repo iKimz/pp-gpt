@@ -27,5 +27,10 @@ public class ChatRequest {
      * The backend will slice this list according to the model's {@code max_history_messages} setting.
      */
     private List<Map<String, String>> history = Collections.emptyList();
+
+    /**
+     * Optional image attachments as Base64 Data URLs (e.g. "data:image/png;base64,...").
+     */
+    private List<String> images = Collections.emptyList();
 }
 

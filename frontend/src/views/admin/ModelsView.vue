@@ -23,9 +23,12 @@
       <template #cell-provider="{ value }">
         <span :class="providerBadgeClass(value)">{{ value }}</span>
       </template>
-      <template #cell-modelType="{ value }">
+      <template #cell-modelType="{ row, value }">
         <span v-if="value === 'GUARDRAIL'" class="badge badge-orange inline-flex items-center gap-1 whitespace-nowrap">🛡️ Guardrail</span>
-        <span v-else class="badge badge-blue inline-flex items-center gap-1 whitespace-nowrap">💬 Generation</span>
+        <div v-else class="flex items-center gap-1">
+          <span class="badge badge-blue inline-flex items-center gap-1 whitespace-nowrap">💬 Generation</span>
+          <span v-if="row.supportsVision" class="badge badge-purple inline-flex items-center gap-1 whitespace-nowrap">👁️ Vision</span>
+        </div>
       </template>
     </DataTable>
 
@@ -75,6 +78,14 @@
               🛡️ Guardrail (Safety Filter)
             </label>
           </div>
+        </div>
+
+        <div v-if="form.modelType === 'GENERATION'" class="p-3 bg-surface-800 rounded-lg border border-surface-600">
+          <label class="flex items-center gap-2 cursor-pointer text-sm font-medium text-[#1a1b22]">
+            <input type="checkbox" v-model="form.supportsVision" class="accent-brand-500 w-4 h-4" />
+            👁️ Supports Image & File Uploads (Multimodal Vision)
+          </label>
+          <p class="text-[11px] text-[#4d4732] mt-1 pl-6">Enable for models capable of processing images (e.g., GPT-4o, Claude 3.5 Sonnet).</p>
         </div>
 
         <div>
@@ -235,7 +246,8 @@ const form = reactive({
   timeoutMs:           30000,
   maxHistoryMessages:  10,
   systemPrompt:        '',
-  modelType:           'GENERATION'
+  modelType:           'GENERATION',
+  supportsVision:      false
 })
 
 // ─── Credential format reference cards ────────────────────────────────
@@ -312,7 +324,8 @@ function openCreate() {
   activeTab.value = 'general'
   Object.assign(form, {
     name: '', provider: 'OPENAI', modelName: '', endpointUrl: '', credentials: '', active: true,
-    temperature: 0.7, timeoutMs: 30000, maxHistoryMessages: 10, systemPrompt: '', modelType: 'GENERATION'
+    temperature: 0.7, timeoutMs: 30000, maxHistoryMessages: 10, systemPrompt: '', modelType: 'GENERATION',
+    supportsVision: false
   })
   showModal.value = true
 }
@@ -320,7 +333,14 @@ function openCreate() {
 function openEdit(model) {
   editing.value = model
   activeTab.value = 'general'
-  Object.assign(form, { ...model, name: model.name || '', credentials: '', systemPrompt: model.systemPrompt || '', modelType: model.modelType || 'GENERATION' })
+  Object.assign(form, {
+    ...model,
+    name: model.name || '',
+    credentials: '',
+    systemPrompt: model.systemPrompt || '',
+    modelType: model.modelType || 'GENERATION',
+    supportsVision: !!model.supportsVision
+  })
   showModal.value = true
 }
 

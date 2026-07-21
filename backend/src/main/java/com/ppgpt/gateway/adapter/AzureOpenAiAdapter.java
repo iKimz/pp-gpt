@@ -77,7 +77,7 @@ public class AzureOpenAiAdapter implements AiProviderAdapter {
 
         // Azure body: no "model" field; deployment is embedded in the URL
         // System prompt + history + new user message (same spec as OpenAI)
-        List<Map<String, String>> messages = OpenAiAdapter.buildMessages(request, model);
+        List<Map<String, Object>> messages = OpenAiAdapter.buildMessages(request, model);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("messages", messages);

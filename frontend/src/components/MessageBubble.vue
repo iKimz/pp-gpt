@@ -29,6 +29,17 @@
           : 'bg-white text-[#1a1b22] rounded-bl-sm border border-[#e8e7f1]'
       ]"
     >
+      <!-- Image attachments if any -->
+      <div v-if="message.images && message.images.length" class="flex flex-wrap gap-2 mb-2">
+        <img
+          v-for="(img, idx) in message.images"
+          :key="idx"
+          :src="img"
+          alt="Attached image"
+          class="max-w-[200px] max-h-[200px] object-cover rounded-xl border border-black/10 shadow-sm"
+        />
+      </div>
+
       <!-- User message: plain text -->
       <p v-if="message.role === 'user'" class="whitespace-pre-wrap break-words">{{ message.content }}</p>
 
