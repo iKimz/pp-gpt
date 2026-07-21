@@ -12,14 +12,16 @@ import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
+import reactor.netty.transport.ProxyProvider;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
  * WebClient configuration for proxying AI provider requests.
- * Large buffer size (10MB) to handle long SSE streams.
- * Connection timeout 10s, read timeout 120s (LLM responses can be slow).
+ * Supports outbound HTTP/HTTPS Proxy (Reactor Netty ProxyProvider).
+ * Large buffer size (32MB) to handle long SSE streams & Base64 images.
  */
 @Configuration
 public class WebClientConfig {
@@ -38,6 +40,39 @@ public class WebClientConfig {
                 .doOnConnected(conn -> conn
                         .addHandlerLast(new ReadTimeoutHandler(120, TimeUnit.SECONDS))
                         .addHandlerLast(new WriteTimeoutHandler(30, TimeUnit.SECONDS)));
+
+        // Configure Outbound HTTP/HTTPS Proxy for Reactor Netty
+        String proxyHost = System.getProperty("https.proxyHost", System.getProperty("http.proxyHost"));
+        if (proxyHost == null || proxyHost.isBlank()) {
+            String envProxy = System.getenv("HTTPS_PROXY");
+            if (envProxy == null || envProxy.isBlank()) envProxy = System.getenv("HTTP_PROXY");
+            if (envProxy != null && !envProxy.isBlank()) {
+                try {
+                    URI uri = new URI(envProxy.startsWith("http") ? envProxy : "http://" + envProxy);
+                    proxyHost = uri.getHost();
+                } catch (Exception ignored) {}
+            }
+        }
+
+        String proxyPortStr = System.getProperty("https.proxyPort", System.getProperty("http.proxyPort", "3128"));
+        int proxyPort = 3128;
+        try {
+            proxyPort = Integer.parseInt(proxyPortStr);
+        } catch (Exception ignored) {}
+
+        String defaultNonProxy = "localhost|127.0.0.1|mariadb|redis|vault|hiroshi-nlu|chatservice|chatservice2|host.docker.internal";
+        String nonProxyHosts = System.getProperty("http.nonProxyHosts", defaultNonProxy);
+
+        if (proxyHost != null && !proxyHost.isBlank()) {
+            final String finalHost = proxyHost;
+            final int finalPort = proxyPort;
+            final String finalNonProxy = nonProxyHosts;
+
+            httpClient = httpClient.proxy(proxy -> proxy.type(ProxyProvider.Proxy.HTTP)
+                    .host(finalHost)
+                    .port(finalPort)
+                    .nonProxyHosts(finalNonProxy));
+        }
 
         // 32MB buffer for SSE streaming and multimodal image payloads
         ExchangeStrategies strategies = ExchangeStrategies.builder()
