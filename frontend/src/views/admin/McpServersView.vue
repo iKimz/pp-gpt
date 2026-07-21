@@ -484,8 +484,9 @@ async function startOAuthPopup(server) {
   params.append('code_challenge', pkce.challenge)
   params.append('code_challenge_method', 'S256')
 
-  if (server.oauthClientId && server.oauthClientId.trim() !== '') {
-    params.append('client_id', server.oauthClientId.trim())
+  const clientId = server.oauthClientId || (testResult.value && testResult.value.oauthClientId)
+  if (clientId && clientId.trim() !== '') {
+    params.append('client_id', clientId.trim())
   }
 
   const fullAuthUrl = baseUrl.includes('?') 

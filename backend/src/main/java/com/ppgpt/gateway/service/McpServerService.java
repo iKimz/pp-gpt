@@ -17,6 +17,7 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -34,14 +35,26 @@ public class McpServerService {
     private final CryptoService cryptoService;
     private final WebClient aiWebClient;
 
+    public static class OAuthDiscoveryResult {
+        public String authorizeUrl;
+        public String tokenUrl;
+        public String registrationUrl;
+
+        public OAuthDiscoveryResult(String authorizeUrl, String tokenUrl, String registrationUrl) {
+            this.authorizeUrl = authorizeUrl;
+            this.tokenUrl = tokenUrl;
+            this.registrationUrl = registrationUrl;
+        }
+    }
+
     @SuppressWarnings("unchecked")
-    private Mono<String> discoverOAuthAuthorizeUrl(String wwwAuthHeader) {
+    private Mono<OAuthDiscoveryResult> discoverOAuthMetadata(String wwwAuthHeader) {
         if (wwwAuthHeader == null || wwwAuthHeader.isBlank()) return Mono.empty();
 
         // 1. Direct authorization_uri="https://..."
         Matcher authMatcher = AUTH_URI_PATTERN.matcher(wwwAuthHeader);
         if (authMatcher.find()) {
-            return Mono.just(authMatcher.group(1));
+            return Mono.just(new OAuthDiscoveryResult(authMatcher.group(1), null, null));
         }
 
         // 2. RFC 9207 / RFC 8414 Well-Known Resource Metadata Discovery
@@ -53,7 +66,7 @@ public class McpServerService {
                     .retrieve()
                     .bodyToMono(Map.class)
                     .flatMap(meta -> {
-                        java.util.List<String> authServers = (java.util.List<String>) meta.get("authorization_servers");
+                        List<String> authServers = (List<String>) meta.get("authorization_servers");
                         if (authServers != null && !authServers.isEmpty()) {
                             String authServerBase = authServers.get(0).replaceAll("/+$", "");
                             String discoveryUrl = authServerBase + "/.well-known/oauth-authorization-server";
@@ -61,14 +74,45 @@ public class McpServerService {
                                     .uri(discoveryUrl)
                                     .retrieve()
                                     .bodyToMono(Map.class)
-                                    .map(disc -> (String) disc.get("authorization_endpoint"));
+                                    .map(disc -> new OAuthDiscoveryResult(
+                                            (String) disc.get("authorization_endpoint"),
+                                            (String) disc.get("token_endpoint"),
+                                            (String) disc.get("registration_endpoint")
+                                    ));
                         }
                         return Mono.empty();
                     })
-                    .onErrorResume(e -> Mono.empty());
+                    .onErrorResume(e -> {
+                        log.warn("[MCP OAuth] Metadata discovery failed for header {}: {}", wwwAuthHeader, e.getMessage());
+                        return Mono.empty();
+                    });
         }
 
         return Mono.empty();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Mono<String> registerDynamicClient(String registrationUrl, String redirectUri) {
+        if (registrationUrl == null || registrationUrl.isBlank()) return Mono.empty();
+
+        Map<String, Object> regBody = Map.of(
+                "client_name", "pp-gpt Gateway",
+                "redirect_uris", List.of(redirectUri),
+                "grant_types", List.of("authorization_code", "refresh_token"),
+                "response_types", List.of("code")
+        );
+
+        return aiWebClient.post()
+                .uri(registrationUrl)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(regBody)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(resp -> (String) resp.get("client_id"))
+                .onErrorResume(e -> {
+                    log.warn("[MCP OAuth] Dynamic client registration at {} failed: {}", registrationUrl, e.getMessage());
+                    return Mono.empty();
+                });
     }
 
     public Flux<McpServerDto> getAllMcpServers() {
@@ -152,13 +196,10 @@ public class McpServerService {
                             .uri(server.getEndpointUrl())
                             .contentType(MediaType.APPLICATION_JSON);
 
-                    // 1. Static API Key auth
                     if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
                         String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
                         spec.header("Authorization", "Bearer " + rawKey);
-                    }
-                    // 2. OAuth 2.0 Access Token auth
-                    else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
+                    } else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
                         String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
                         spec.header("Authorization", "Bearer " + rawToken);
                     }
@@ -174,23 +215,38 @@ public class McpServerService {
                                 HttpStatus status = HttpStatus.valueOf(response.statusCode().value());
                                 if (status == HttpStatus.UNAUTHORIZED || status == HttpStatus.FORBIDDEN) {
                                     String wwwAuth = response.headers().header("WWW-Authenticate").stream().findFirst().orElse(null);
-                                    
-                                    String configuredUrl = (server.getOauthAuthorizeUrl() != null && !server.getOauthAuthorizeUrl().isBlank())
-                                            ? server.getOauthAuthorizeUrl() : "";
-                                    
-                                    return discoverOAuthAuthorizeUrl(wwwAuth)
-                                            .defaultIfEmpty(configuredUrl)
-                                            .flatMap(authUri -> {
-                                                Map<String, Object> resMap = new LinkedHashMap<>();
-                                                resMap.put("status", "UNAUTHORIZED");
-                                                resMap.put("httpStatus", status.value());
-                                                resMap.put("requiresOAuth", true);
-                                                if (!authUri.isBlank()) {
-                                                    resMap.put("discoveredAuthorizeUrl", authUri);
+
+                                    return discoverOAuthMetadata(wwwAuth)
+                                            .flatMap(disc -> {
+                                                String authUrl = disc.authorizeUrl;
+                                                String tokenUrl = disc.tokenUrl;
+                                                String regUrl = disc.registrationUrl;
+
+                                                // Update server entity with discovered OAuth metadata
+                                                server.setAuthType("OAUTH2");
+                                                if (authUrl != null) server.setOauthAuthorizeUrl(authUrl);
+                                                if (tokenUrl != null) server.setOauthTokenUrl(tokenUrl);
+
+                                                // Check if dynamic client registration is required
+                                                if ((server.getOauthClientId() == null || server.getOauthClientId().isBlank()) && regUrl != null) {
+                                                    String redirectUri = "http://localhost/api/v1/mcp/oauth/callback";
+                                                    return registerDynamicClient(regUrl, redirectUri)
+                                                            .flatMap(clientId -> {
+                                                                if (clientId != null && !clientId.isBlank()) {
+                                                                    server.setOauthClientId(clientId);
+                                                                }
+                                                                server.setNewEntity(false);
+                                                                return mcpServerRepository.save(server)
+                                                                        .map(saved -> createUnauthorizedResponse(status.value(), authUrl, saved.getOauthClientId()));
+                                                            })
+                                                            .defaultIfEmpty(createUnauthorizedResponse(status.value(), authUrl, server.getOauthClientId()));
                                                 }
-                                                resMap.put("message", "MCP Server requires authentication. Click Popup Login to authorize.");
-                                                return Mono.just(resMap);
-                                            });
+
+                                                server.setNewEntity(false);
+                                                return mcpServerRepository.save(server)
+                                                        .map(saved -> createUnauthorizedResponse(status.value(), authUrl, saved.getOauthClientId()));
+                                            })
+                                            .defaultIfEmpty(createUnauthorizedResponse(status.value(), server.getOauthAuthorizeUrl(), server.getOauthClientId()));
                                 }
 
                                 return response.bodyToMono(Map.class)
@@ -205,6 +261,21 @@ public class McpServerService {
                                     "error", err.getMessage() != null ? err.getMessage() : "Connection timed out or failed"
                             )));
                 });
+    }
+
+    private Map<String, Object> createUnauthorizedResponse(int httpStatus, String authorizeUrl, String clientId) {
+        Map<String, Object> resMap = new LinkedHashMap<>();
+        resMap.put("status", "UNAUTHORIZED");
+        resMap.put("httpStatus", httpStatus);
+        resMap.put("requiresOAuth", true);
+        if (authorizeUrl != null && !authorizeUrl.isBlank()) {
+            resMap.put("discoveredAuthorizeUrl", authorizeUrl);
+        }
+        if (clientId != null && !clientId.isBlank()) {
+            resMap.put("oauthClientId", clientId);
+        }
+        resMap.put("message", "MCP Server requires authentication. Click Popup Login to authorize.");
+        return resMap;
     }
 
     public Mono<McpServerDto> saveOAuthTokens(String serverId, String accessToken, String refreshToken, Long expiresInSeconds) {
