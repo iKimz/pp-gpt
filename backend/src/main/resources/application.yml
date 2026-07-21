@@ -1,5 +1,6 @@
 server:
   port: 8080
+  forward-headers-strategy: framework
   error:
     include-message: always
 
@@ -62,10 +63,10 @@ app:
     key: ${ENCRYPTION_KEY:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
 
   mock-ad:
-    enabled: ${MOCK_AD_ENABLED:true}
+    enabled: ${MOCK_AD_ENABLED:false}
 
   cors:
-    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:4173}
+    allowed-origins: ${CORS_ORIGINS:*}
 
 # ─── Actuator ──────────────────────────────────────────────────────────────
 management:
