@@ -70,5 +70,6 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: '.'
+          vuln-type: 'os'
           format: 'table'
           severity: 'CRITICAL,HIGH'
