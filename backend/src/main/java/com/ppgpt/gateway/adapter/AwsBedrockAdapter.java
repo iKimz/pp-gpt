@@ -137,14 +137,10 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
         List<Map<String, Object>> bedrockMessages = new ArrayList<>();
 
         if (request.getHistory() != null) {
-            for (Map<String, String> turn : request.getHistory()) {
-                String role = turn.get("role");
-                if (role == null || role.isBlank())
-                    role = "user";
-
-                String content = turn.get("content");
-                if (content == null)
-                    content = "";
+            for (Map<String, Object> turn : request.getHistory()) {
+                String role = turn.get("role") != null ? turn.get("role").toString() : "user";
+                Object content = turn.get("content");
+                if (content == null) content = "";
 
                 bedrockMessages.add(Map.of(
                         "role", role,

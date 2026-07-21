@@ -26,7 +26,7 @@ public class ChatRequest {
      * Each entry has keys: {@code role} ("user"|"assistant") and {@code content} (String).
      * The backend will slice this list according to the model's {@code max_history_messages} setting.
      */
-    private List<Map<String, String>> history = Collections.emptyList();
+    private List<Map<String, Object>> history = Collections.emptyList();
 
     /**
      * Optional image attachments as Base64 Data URLs (e.g. "data:image/png;base64,...").

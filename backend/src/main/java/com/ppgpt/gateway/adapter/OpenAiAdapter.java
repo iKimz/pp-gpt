@@ -98,18 +98,25 @@ public class OpenAiAdapter implements AiProviderAdapter {
         }
         // 2. History (already sliced by ChatService)
         if (request.getHistory() != null) {
-            for (Map<String, String> turn : request.getHistory()) {
-                String role = turn.get("role");
-                if (role == null || role.isBlank())
-                    role = "user";
+            for (Map<String, Object> turn : request.getHistory()) {
+                String role = turn.get("role") != null ? turn.get("role").toString() : "user";
 
-                String content = turn.get("content");
-                if (content == null)
-                    content = "";
+                Map<String, Object> msg = new LinkedHashMap<>();
+                msg.put("role", role);
 
-                messages.add(Map.of(
-                        "role", role,
-                        "content", content));
+                if (turn.containsKey("content")) {
+                    msg.put("content", turn.get("content"));
+                }
+                if (turn.containsKey("tool_call_id")) {
+                    msg.put("tool_call_id", turn.get("tool_call_id"));
+                }
+                if (turn.containsKey("name")) {
+                    msg.put("name", turn.get("name"));
+                }
+                if (turn.containsKey("tool_calls")) {
+                    msg.put("tool_calls", turn.get("tool_calls"));
+                }
+                messages.add(msg);
             }
         }
         // 3. New user message (text or multimodal array if images attached)

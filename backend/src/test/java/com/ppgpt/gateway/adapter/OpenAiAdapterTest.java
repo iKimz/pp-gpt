@@ -20,7 +20,7 @@ class OpenAiAdapterTest {
                 .systemPrompt(systemPrompt).maxHistoryMessages(10).build();
     }
 
-    private static ChatRequest requestWith(String message, List<Map<String, String>> history) {
+    private static ChatRequest requestWith(String message, List<Map<String, Object>> history) {
         ChatRequest req = new ChatRequest();
         req.setMessage(message);
         req.setSessionId("sess-1");
@@ -52,7 +52,7 @@ class OpenAiAdapterTest {
 
     @Test
     void buildMessages_withHistory_historyInsertedBetweenSystemAndUser() {
-        List<Map<String, String>> history = List.of(
+        List<Map<String, Object>> history = List.of(
                 Map.of("role", "user",      "content", "What is 2+2?"),
                 Map.of("role", "assistant", "content", "It is 4."));
         List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(
@@ -66,21 +66,21 @@ class OpenAiAdapterTest {
 
     @Test
     void buildMessages_historyTurnWithNullRole_defaultsToUser() {
-        List<Map<String, String>> history = List.of(Map.of("content", "previous message"));
+        List<Map<String, Object>> history = List.of(Map.of("content", "previous message"));
         List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(requestWith("New", history), modelWith(null));
         assertThat(msgs.get(0).get("role")).isEqualTo("user");
     }
 
     @Test
     void buildMessages_historyTurnWithNullContent_defaultsToEmpty() {
-        List<Map<String, String>> history = List.of(Map.of("role", "assistant"));
+        List<Map<String, Object>> history = List.of(Map.of("role", "assistant", "content", ""));
         List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(requestWith("Follow-up", history), modelWith(null));
         assertThat(msgs.get(0).get("content")).isEqualTo("");
     }
 
     @Test
     void buildMessages_lastMessageIsAlwaysNewUserMessage() {
-        List<Map<String, String>> history = List.of(
+        List<Map<String, Object>> history = List.of(
                 Map.of("role", "user", "content", "old"),
                 Map.of("role", "assistant", "content", "reply"));
         List<Map<String, Object>> msgs = OpenAiAdapter.buildMessages(

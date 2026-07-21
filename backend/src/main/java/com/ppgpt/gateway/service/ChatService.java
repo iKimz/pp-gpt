@@ -215,12 +215,12 @@ public class ChatService {
                         String decryptedCredentials = cryptoService.decrypt(model.getCredentialsEncrypted());
 
                         // ── Slice history to max_history_messages ────────────────────
-                        List<Map<String, String>> rawHistory = request.getHistory() != null ? request.getHistory()
+                        List<Map<String, Object>> rawHistory = request.getHistory() != null ? request.getHistory()
                                 : Collections.emptyList();
                         // maxHistoryMessages in the model actually represents conversation TURNS (1
                         // turn = user + assistant = 2 messages)
                         int maxHistoryMessages = model.getMaxHistoryMessages() * 2;
-                        List<Map<String, String>> slicedHistory = rawHistory.size() <= maxHistoryMessages
+                        List<Map<String, Object>> slicedHistory = rawHistory.size() <= maxHistoryMessages
                                 ? rawHistory
                                 : rawHistory.subList(rawHistory.size() - maxHistoryMessages, rawHistory.size());
 
