@@ -175,14 +175,19 @@ public class McpServerService {
                                 if (status == HttpStatus.UNAUTHORIZED || status == HttpStatus.FORBIDDEN) {
                                     String wwwAuth = response.headers().header("WWW-Authenticate").stream().findFirst().orElse(null);
                                     
+                                    String configuredUrl = (server.getOauthAuthorizeUrl() != null && !server.getOauthAuthorizeUrl().isBlank())
+                                            ? server.getOauthAuthorizeUrl() : "";
+                                    
                                     return discoverOAuthAuthorizeUrl(wwwAuth)
-                                            .defaultIfEmpty("https://www.firecrawl.dev/api/oauth/authorize")
+                                            .defaultIfEmpty(configuredUrl)
                                             .flatMap(authUri -> {
                                                 Map<String, Object> resMap = new LinkedHashMap<>();
                                                 resMap.put("status", "UNAUTHORIZED");
                                                 resMap.put("httpStatus", status.value());
                                                 resMap.put("requiresOAuth", true);
-                                                resMap.put("discoveredAuthorizeUrl", authUri);
+                                                if (!authUri.isBlank()) {
+                                                    resMap.put("discoveredAuthorizeUrl", authUri);
+                                                }
                                                 resMap.put("message", "MCP Server requires authentication. Click Popup Login to authorize.");
                                                 return Mono.just(resMap);
                                             });

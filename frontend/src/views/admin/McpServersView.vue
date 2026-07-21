@@ -201,70 +201,43 @@
             />
           </div>
 
-          <!-- Auth Type Selector -->
           <div>
-            <label class="block font-medium text-gray-700 mb-1">Authentication Method *</label>
-            <div class="grid grid-cols-2 gap-3">
-              <label
-                :class="[
-                  'flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all',
-                  form.authType === 'STATIC_KEY' ? 'border-[#ffd700] bg-[#ffd700]/10 font-bold text-[#1a1b22]' : 'border-gray-200 text-gray-600'
-                ]"
-              >
-                <input type="radio" v-model="form.authType" value="STATIC_KEY" class="text-[#ffd700]" />
-                <div>
-                  <p class="text-xs">🔑 Static API Key</p>
-                  <p class="text-[10px] text-gray-400 font-normal">Personal API Key / Bearer Token</p>
-                </div>
-              </label>
-              <label
-                :class="[
-                  'flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all',
-                  form.authType === 'OAUTH2' ? 'border-purple-400 bg-purple-50 font-bold text-purple-900' : 'border-gray-200 text-gray-600'
-                ]"
-              >
-                <input type="radio" v-model="form.authType" value="OAUTH2" class="text-purple-600" />
-                <div>
-                  <p class="text-xs">🛡️ OAuth 2.0 PKCE</p>
-                  <p class="text-[10px] text-gray-400 font-normal">Interactive Web Popup Login</p>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <!-- Static API Key Input -->
-          <div v-if="form.authType === 'STATIC_KEY'">
-            <label class="block font-medium text-gray-700 mb-1">API Key / Bearer Token</label>
+            <label class="block font-medium text-gray-700 mb-1">API Key / Bearer Token (Optional)</label>
             <input
               v-model="form.apiKey"
               type="password"
-              placeholder="e.g. fc-xxxxxxxx... or ghp_xxxx..."
+              placeholder="e.g. Personal API Key (fc-...) or Bearer Token"
               class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
             />
-            <p class="text-[10px] text-gray-400 mt-1">Stored securely with AES-256-GCM encryption.</p>
+            <p class="text-[10px] text-gray-400 mt-1">Leave blank if using Interactive OAuth Popup Authorization.</p>
           </div>
 
-          <!-- OAuth 2.0 Inputs -->
-          <div v-else-if="form.authType === 'OAUTH2'" class="space-y-3 p-3 bg-purple-50/50 rounded-xl border border-purple-100">
-            <div>
-              <label class="block font-medium text-purple-900 mb-1">OAuth Authorize URL</label>
-              <input
-                v-model="form.oauthAuthorizeUrl"
-                type="url"
-                placeholder="https://mcp.firecrawl.dev/oauth/authorize"
-                class="w-full px-3 py-2 rounded-xl border border-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400 font-mono text-[11px]"
-              />
+          <!-- Advanced OAuth Options (Collapsible) -->
+          <details class="text-[#1a1b22] border border-gray-200 rounded-xl p-3 bg-gray-50/50">
+            <summary class="font-semibold cursor-pointer text-xs text-gray-600 select-none">
+              ⚙️ Optional Custom OAuth Config
+            </summary>
+            <div class="space-y-3 mt-3 pt-3 border-t border-gray-200">
+              <div>
+                <label class="block font-medium text-gray-700 mb-1">OAuth Client ID (Optional)</label>
+                <input
+                  v-model="form.oauthClientId"
+                  type="text"
+                  placeholder="Only if required by custom OAuth Provider"
+                  class="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
+                />
+              </div>
+              <div>
+                <label class="block font-medium text-gray-700 mb-1">OAuth Authorize URL (Optional)</label>
+                <input
+                  v-model="form.oauthAuthorizeUrl"
+                  type="url"
+                  placeholder="Auto-discovered via ⚡ Test connection if left blank"
+                  class="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px]"
+                />
+              </div>
             </div>
-            <div>
-              <label class="block font-medium text-purple-900 mb-1">OAuth Client ID (Optional)</label>
-              <input
-                v-model="form.oauthClientId"
-                type="text"
-                placeholder="Client ID if required by OAuth Provider"
-                class="w-full px-3 py-2 rounded-xl border border-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400"
-              />
-            </div>
-          </div>
+          </details>
 
           <div>
             <label class="block font-medium text-gray-700 mb-1">Description</label>
@@ -492,22 +465,28 @@ async function generatePkce() {
 }
 
 async function startOAuthPopup(server) {
-  const baseUrl = server.oauthAuthorizeUrl || 'https://www.firecrawl.dev/api/oauth/authorize'
+  const baseUrl = server.oauthAuthorizeUrl || server.discoveredAuthorizeUrl
+  if (!baseUrl) {
+    error.value = 'OAuth Authorization URL is missing. Please click "⚡ Test" connection to auto-discover or enter Authorize URL in Edit modal.'
+    return
+  }
+
   const redirectUri = `${window.location.origin}${import.meta.env.BASE_URL}api/v1/mcp/oauth/callback`
   const serverId = server.id || server.serverId || ''
   
   const pkce = await generatePkce()
   sessionStorage.setItem(`pkce_verifier_${serverId}`, pkce.verifier)
 
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: server.oauthClientId || 'pp-gpt',
-    redirect_uri: redirectUri,
-    state: serverId,
-    scope: 'firecrawl:global',
-    code_challenge: pkce.challenge,
-    code_challenge_method: 'S256'
-  })
+  const params = new URLSearchParams()
+  params.append('response_type', 'code')
+  params.append('redirect_uri', redirectUri)
+  params.append('state', serverId)
+  params.append('code_challenge', pkce.challenge)
+  params.append('code_challenge_method', 'S256')
+
+  if (server.oauthClientId && server.oauthClientId.trim() !== '') {
+    params.append('client_id', server.oauthClientId.trim())
+  }
 
   const fullAuthUrl = baseUrl.includes('?') 
     ? `${baseUrl}&${params.toString()}` 
