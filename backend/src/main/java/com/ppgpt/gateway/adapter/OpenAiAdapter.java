@@ -61,6 +61,9 @@ public class OpenAiAdapter implements AiProviderAdapter {
         body.put("messages", messages);
         body.put("temperature", model.getTemperature());
         body.put("stream", true);
+        if (request.getTools() != null && !request.getTools().isEmpty()) {
+            body.put("tools", request.getTools());
+        }
 
         try {
             log.debug("[OpenAI] Built request payload: {}", objectMapper.writeValueAsString(body));
@@ -146,13 +149,27 @@ public class OpenAiAdapter implements AiProviderAdapter {
     private String extractContent(String json) {
         try {
             JsonNode node = objectMapper.readTree(json);
-            JsonNode delta = node.path("choices").path(0).path("delta").path("content");
-            if (!delta.isMissingNode() && !delta.isNull())
-                return delta.asText();
-            JsonNode msg = node.path("choices").path(0).path("message").path("content");
+            JsonNode choice = node.path("choices").path(0);
+            JsonNode delta = choice.path("delta");
+
+            JsonNode toolCalls = delta.path("tool_calls");
+            if (toolCalls.isMissingNode() || toolCalls.isNull()) {
+                toolCalls = choice.path("message").path("tool_calls");
+            }
+            if (!toolCalls.isMissingNode() && !toolCalls.isNull() && toolCalls.isArray() && toolCalls.size() > 0) {
+                Map<String, Object> chunk = new LinkedHashMap<>();
+                chunk.put("content", "");
+                chunk.put("tool_calls", objectMapper.treeToValue(toolCalls, Object.class));
+                return objectMapper.writeValueAsString(chunk);
+            }
+
+            JsonNode content = delta.path("content");
+            if (!content.isMissingNode() && !content.isNull())
+                return content.asText();
+            JsonNode msg = choice.path("message").path("content");
             if (!msg.isMissingNode() && !msg.isNull())
                 return msg.asText();
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             log.trace("Non-JSON SSE chunk: {}", json);
         }
         return null;

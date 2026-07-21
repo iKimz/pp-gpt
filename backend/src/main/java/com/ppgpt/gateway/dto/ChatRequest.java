@@ -32,5 +32,10 @@ public class ChatRequest {
      * Optional image attachments as Base64 Data URLs (e.g. "data:image/png;base64,...").
      */
     private List<String> images = Collections.emptyList();
+
+    /**
+     * Optional function tool definitions for Tool Calling / MCP.
+     */
+    private List<ToolDto> tools = Collections.emptyList();
 }
 

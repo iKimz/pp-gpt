@@ -61,6 +61,29 @@
           <span class="tracking-wide">Thinking...</span>
         </div>
 
+        <!-- Tool Execution Badges -->
+        <div v-if="parsedMessage.toolCalls && parsedMessage.toolCalls.length" class="flex flex-col gap-2 my-1">
+          <div
+            v-for="(tool, idx) in parsedMessage.toolCalls"
+            :key="idx"
+            class="bg-[#1a1b26] border border-[#2e3047] rounded-xl p-3 text-xs text-gray-200 font-mono shadow-sm flex flex-col gap-2"
+          >
+            <div class="flex items-center justify-between font-semibold">
+              <div class="flex items-center gap-2 text-[#ffd700]">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span>Tool Executed: <span class="text-white font-bold">{{ tool.function?.name || tool.name || 'function' }}</span></span>
+              </div>
+              <span class="bg-[#ffd700]/10 text-[#ffd700] text-[10px] px-2 py-0.5 rounded-full border border-[#ffd700]/30 font-sans font-medium">Executed</span>
+            </div>
+            <div v-if="tool.function?.arguments || tool.arguments" class="bg-[#111219] p-2.5 rounded-lg text-gray-300 overflow-x-auto text-[11px] border border-[#232536]">
+              <pre class="whitespace-pre-wrap break-all leading-relaxed">{{ formatJson(tool.function?.arguments || tool.arguments) }}</pre>
+            </div>
+          </div>
+        </div>
+
         <!-- Rendered markdown main text -->
         <div
           v-if="parsedMessage.main"
@@ -111,8 +134,21 @@ marked.setOptions({
 
 const parsedMessage = computed(() => {
   let text = props.message.content || ''
+  let toolCalls = props.message.toolCalls || []
+
   if (props.message.role !== 'assistant') {
-    return { isThinking: false, main: text }
+    return { isThinking: false, main: text, toolCalls: [] }
+  }
+
+  // Parse structured JSON if chunk contains tool_calls
+  if (text.trim().startsWith('{') && text.includes('tool_calls')) {
+    try {
+      const parsed = JSON.parse(text)
+      if (parsed.tool_calls) {
+        toolCalls = parsed.tool_calls
+        text = parsed.content || ''
+      }
+    } catch (e) {}
   }
 
   let isThinking = false
@@ -132,9 +168,20 @@ const parsedMessage = computed(() => {
 
   return {
     isThinking,
-    main: mainContent
+    main: mainContent,
+    toolCalls
   }
 })
+
+function formatJson(jsonStr) {
+  if (!jsonStr) return ''
+  if (typeof jsonStr === 'object') return JSON.stringify(jsonStr, null, 2)
+  try {
+    return JSON.stringify(JSON.parse(jsonStr), null, 2)
+  } catch {
+    return jsonStr
+  }
+}
 
 const renderedContent = computed(() => {
   if (!parsedMessage.value.main) return ''
