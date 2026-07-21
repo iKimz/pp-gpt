@@ -3,31 +3,6 @@
 -- UUID stored as CHAR(36). DEFAULT (UUID()) requires MariaDB 10.7+
 -- ============================================================
 
--- User Groups
-CREATE TABLE IF NOT EXISTS user_groups (
-    id               CHAR(36)       NOT NULL,
-    group_name       VARCHAR(100)   NOT NULL,
-    max_daily_credits DECIMAL(15,4) NOT NULL DEFAULT 10000.0000,
-    created_at       TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT pk_user_groups PRIMARY KEY (id),
-    CONSTRAINT uq_user_groups_name UNIQUE (group_name)
-);
-
--- Users
-CREATE TABLE IF NOT EXISTS users (
-    id            CHAR(36)     NOT NULL,
-    username      VARCHAR(100) NOT NULL,
-    email         VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255),
-    auth_source   ENUM('AZURE_AD','LOCAL') NOT NULL DEFAULT 'LOCAL',
-    group_id      CHAR(36),
-    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT pk_users PRIMARY KEY (id),
-    CONSTRAINT uq_users_username UNIQUE (username),
-    CONSTRAINT fk_users_group FOREIGN KEY (group_id) REFERENCES user_groups(id) ON DELETE SET NULL,
-    INDEX idx_users_group_id (group_id)
-);
-
 -- AI Models
 CREATE TABLE IF NOT EXISTS models (
     id                   CHAR(36)     NOT NULL,
@@ -48,13 +23,32 @@ CREATE TABLE IF NOT EXISTS models (
     INDEX idx_models_active (is_active)
 );
 
-ALTER TABLE models ADD COLUMN IF NOT EXISTS supports_vision BOOLEAN NOT NULL DEFAULT FALSE;
-UPDATE models SET supports_vision = TRUE WHERE provider IN ('AZURE', 'OPENAI') AND (model_name LIKE '%gpt4%' OR model_name LIKE '%gpt-4%' OR model_name LIKE '%mini%');
+-- User Groups
+CREATE TABLE IF NOT EXISTS user_groups (
+    id                 CHAR(36)       NOT NULL,
+    group_name         VARCHAR(100)   NOT NULL,
+    max_daily_credits   DECIMAL(15,4) NOT NULL DEFAULT 10000.0000,
+    guardrail_model_id CHAR(36)       NULL,
+    created_at         TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_user_groups PRIMARY KEY (id),
+    CONSTRAINT uq_user_groups_name UNIQUE (group_name),
+    CONSTRAINT fk_user_groups_guardrail FOREIGN KEY (guardrail_model_id) REFERENCES models(id) ON DELETE SET NULL
+);
 
-
--- User Groups Updates
-ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS guardrail_model_id CHAR(36) NULL;
-ALTER TABLE user_groups ADD CONSTRAINT fk_user_groups_guardrail FOREIGN KEY IF NOT EXISTS (guardrail_model_id) REFERENCES models(id) ON DELETE SET NULL;
+-- Users
+CREATE TABLE IF NOT EXISTS users (
+    id            CHAR(36)     NOT NULL,
+    username      VARCHAR(100) NOT NULL,
+    email         VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255),
+    auth_source   ENUM('AZURE_AD','LOCAL') NOT NULL DEFAULT 'LOCAL',
+    group_id      CHAR(36),
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_users PRIMARY KEY (id),
+    CONSTRAINT uq_users_username UNIQUE (username),
+    CONSTRAINT fk_users_group FOREIGN KEY (group_id) REFERENCES user_groups(id) ON DELETE SET NULL,
+    INDEX idx_users_group_id (group_id)
+);
 
 -- Group ↔ Model Access (surrogate PK for R2DBC compatibility)
 CREATE TABLE IF NOT EXISTS group_model_access (
