@@ -116,6 +116,7 @@ docker compose up -d
 | `app.mock-ad.enabled` | Enable mock Azure AD auth | `true` |
 | `app.jwt.secret` | JWT signing secret | — (required) |
 | `app.jwt.expiry-ms` | JWT token lifetime (ms) | `86400000` (24h) |
+| `spring.codec.max-in-memory-size` | Max WebFlux in-memory buffer limit for multimodal image payloads | `32MB` |
 
 ---
 
