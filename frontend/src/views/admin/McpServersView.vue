@@ -497,7 +497,10 @@ async function startOAuthPopup(server) {
   const left = window.screen.width / 2 - width / 2
   const top = window.screen.height / 2 - height / 2
 
-  window.open(fullAuthUrl, 'mcp_oauth_popup', `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`)
+  const popup = window.open(fullAuthUrl, 'mcp_oauth_popup', `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`)
+  if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+    error.value = 'Popup window was blocked by your browser settings. Please allow popups for this site to complete OAuth authorization.'
+  }
 }
 
 function handleOAuthMessage(event) {

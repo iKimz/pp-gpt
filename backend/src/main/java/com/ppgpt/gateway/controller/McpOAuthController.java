@@ -29,8 +29,17 @@ public class McpOAuthController {
         log.info("[MCP OAuth] Callback received state={}, code_present={}, error={}", state, (code != null), error);
 
         if (error != null) {
-            String msg = (errorDescription != null) ? errorDescription : error;
-            return Mono.just(renderPopupResponse(false, "OAuth Authorization Failed: " + msg, state, null));
+            String humanMessage = switch (error.toLowerCase()) {
+                case "access_denied" -> "Authorization request was declined by the user.";
+                case "invalid_client" -> "Invalid OAuth Client ID. Verify if Client ID is registered with provider.";
+                case "invalid_scope" -> "Requested scope is invalid or not supported by provider.";
+                case "invalid_grant" -> "Authorization code has expired or code_verifier mismatched.";
+                case "unauthorized_client" -> "Client is not authorized to request code using this method.";
+                case "unsupported_response_type" -> "OAuth Server does not support response_type=code.";
+                case "server_error", "temporarily_unavailable" -> "OAuth Provider server is currently experiencing issues. Please try again later.";
+                default -> (errorDescription != null) ? errorDescription : error;
+            };
+            return Mono.just(renderPopupResponse(false, humanMessage, state, null));
         }
 
         if (code == null || code.isBlank()) {
