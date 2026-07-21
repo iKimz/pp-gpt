@@ -140,15 +140,32 @@ const parsedMessage = computed(() => {
     return { isThinking: false, main: text, toolCalls: [] }
   }
 
-  // Parse structured JSON if chunk contains tool_calls
-  if (text.trim().startsWith('{') && text.includes('tool_calls')) {
-    try {
-      const parsed = JSON.parse(text)
-      if (parsed.tool_calls) {
-        toolCalls = parsed.tool_calls
-        text = parsed.content || ''
-      }
-    } catch (e) {}
+  // Parse accumulated SSE delta chunks containing tool_calls
+  if (text.includes('tool_calls')) {
+    const jsonMatches = text.match(/\{"content":.*?"tool_calls":\[.*?\]\}/g)
+    if (jsonMatches && jsonMatches.length > 0) {
+      const toolMap = {}
+      jsonMatches.forEach(jsonStr => {
+        try {
+          const chunk = JSON.parse(jsonStr)
+          if (chunk.tool_calls) {
+            chunk.tool_calls.forEach(tc => {
+              const idx = tc.index ?? 0
+              if (!toolMap[idx]) {
+                toolMap[idx] = {
+                  name: tc.function?.name || tc.name || 'function',
+                  arguments: ''
+                }
+              }
+              if (tc.function?.name) toolMap[idx].name = tc.function.name
+              if (tc.function?.arguments) toolMap[idx].arguments += tc.function.arguments
+            })
+          }
+        } catch (e) {}
+      })
+      toolCalls = Object.values(toolMap)
+      text = text.replace(/\{"content":.*?"tool_calls":\[.*?\]\}/g, '').trim()
+    }
   }
 
   let isThinking = false
