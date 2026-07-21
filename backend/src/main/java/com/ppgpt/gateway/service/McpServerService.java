@@ -376,6 +376,57 @@ public class McpServerService {
                 });
     }
 
+    @SuppressWarnings("unchecked")
+    public Mono<String> executeTool(String toolName, Map<String, Object> arguments) {
+        return mcpServerRepository.findByIsActiveTrue()
+                .flatMap(server -> {
+                    WebClient.RequestBodySpec spec = aiWebClient.post()
+                            .uri(server.getEndpointUrl())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("Accept", "application/json, text/event-stream");
+
+                    if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
+                        String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
+                        spec.header("Authorization", "Bearer " + rawKey);
+                    } else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
+                        String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
+                        spec.header("Authorization", "Bearer " + rawToken);
+                    }
+
+                    Map<String, Object> jsonRpcBody = Map.of(
+                            "jsonrpc", "2.0",
+                            "method", "tools/call",
+                            "params", Map.of(
+                                    "name", toolName,
+                                    "arguments", arguments != null ? arguments : Map.of()
+                            ),
+                            "id", 1
+                    );
+
+                    return spec.bodyValue(jsonRpcBody)
+                            .retrieve()
+                            .bodyToFlux(String.class)
+                            .collectList()
+                            .map(lines -> String.join("\n", lines))
+                            .timeout(Duration.ofSeconds(5))
+                            .flatMap(rawBody -> {
+                                Map<String, Object> resp = parseJsonResponse(rawBody);
+                                Map<String, Object> result = (Map<String, Object>) resp.get("result");
+                                if (result != null && result.containsKey("content")) {
+                                    List<Map<String, Object>> contentList = (List<Map<String, Object>>) result.get("content");
+                                    if (contentList != null && !contentList.isEmpty()) {
+                                        String text = (String) contentList.get(0).get("text");
+                                        if (text != null) return Mono.just(text);
+                                    }
+                                }
+                                return Mono.just(rawBody);
+                            })
+                            .onErrorResume(e -> Mono.empty());
+                })
+                .next()
+                .defaultIfEmpty("{\"error\": \"Tool execution failed or tool not found\"}");
+    }
+
     private McpServerDto toDto(McpServer server) {
         return McpServerDto.builder()
                 .id(server.getId())
