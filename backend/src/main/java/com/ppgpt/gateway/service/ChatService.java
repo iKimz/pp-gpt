@@ -538,7 +538,8 @@ public class ChatService {
                                                                                                 model.getProvider())
                                                                                                 .streamChat(pass2Req,
                                                                                                                 model,
-                                                                                                                decryptedCredentials);
+                                                                                                                decryptedCredentials)
+                                                                                                .defaultIfEmpty("[ขออภัยครับ ระบบไม่สามารถประมวลผลคำตอบจากเครื่องมือได้ในขณะนี้]");
                                                                         });
                                                 }
                                         }

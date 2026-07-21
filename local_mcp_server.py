@@ -60,8 +60,8 @@ TOOLS_DEFINITION = [
             "properties": {
                 "value": {"type": "number", "description": "Numeric value to convert"},
                 "category": {"type": "string", "enum": ["temperature", "distance", "weight", "data_size"]},
-                "from_unit": {"type": "string", "description": "e.g., C, F, km, miles, kg, lbs, MB, GB"},
-                "to_unit": {"type": "string", "description": "e.g., C, F, km, miles, kg, lbs, MB, GB"}
+                "from_unit": {"type": "string", "description": "e.g., inch, cm, m, km, miles, ft, C, F, K, kg, lbs, g, MB, GB"},
+                "to_unit": {"type": "string", "description": "e.g., inch, cm, m, km, miles, ft, C, F, K, kg, lbs, g, MB, GB"}
             },
             "required": ["value", "category", "from_unit", "to_unit"]
         }
@@ -239,7 +239,6 @@ class LocalMcpHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(resp, indent=2).encode('utf-8'))
             return
         
-        # Default Welcome Page for root /
         self._set_headers(200, 'text/html; charset=utf-8')
         tools_html = "".join([
             f'<div class="tool-card"><h3>⚡ {t["name"]}</h3><p>{t["description"]}</p></div>'
@@ -319,100 +318,159 @@ class LocalMcpHandler(BaseHTTPRequestHandler):
             res_payload = {}
 
             if name == "calculate":
-                a, b, op = float(arguments.get("a", 0)), float(arguments.get("b", 0)), arguments.get("operation")
-                res = a + b if op == "add" else a - b if op == "subtract" else a * b if op == "multiply" else (a / b if b != 0 else "Error: Division by zero")
-                res_payload = {"result": res, "explanation": f"{op} on {a} and {b} = {res}"}
+                try:
+                    a = float(arguments.get("a", 0))
+                    b = float(arguments.get("b", 0))
+                    raw_op = str(arguments.get("operation", "add")).lower().strip()
+
+                    op_map = {
+                        "add": "add", "+": "add", "addition": "add", "sum": "add", "plus": "add",
+                        "subtract": "subtract", "-": "subtract", "minus": "subtract",
+                        "multiply": "multiply", "*": "multiply", "times": "multiply",
+                        "divide": "divide", "/": "divide", "div": "divide"
+                    }
+                    op = op_map.get(raw_op, raw_op)
+
+                    if op == "add": res = a + b
+                    elif op == "subtract": res = a - b
+                    elif op == "multiply": res = a * b
+                    elif op == "divide":
+                        if b == 0: res_payload = {"error": "Division by zero is undefined"}
+                        else: res = a / b
+                    else:
+                        res_payload = {"error": f"Unsupported mathematical operation '{raw_op}'. Supported: add, subtract, multiply, divide"}
+
+                    if "error" not in res_payload:
+                        res_payload = {"result": res, "explanation": f"{op} on {a} and {b} = {res}"}
+                except Exception as e:
+                    res_payload = {"error": f"Calculation error: {str(e)}"}
 
             elif name == "get_current_time":
-                tz_str = arguments.get("timezone", "Asia/Bangkok")
-                try: tz = zoneinfo.ZoneInfo(tz_str)
-                except Exception: tz = zoneinfo.ZoneInfo("UTC")
-                now = datetime.datetime.now(tz)
-                res_payload = {"timezone": tz_str, "current_time": now.strftime("%Y-%m-%d %H:%M:%S %Z (UTC%z)"), "day_of_week": now.strftime("%A")}
+                tz_str = str(arguments.get("timezone", "Asia/Bangkok")).strip()
+                tz_aliases = {
+                    "BANGKOK": "Asia/Bangkok", "THAILAND": "Asia/Bangkok", "ICT": "Asia/Bangkok",
+                    "TOKYO": "Asia/Tokyo", "JAPAN": "Asia/Tokyo", "JST": "Asia/Tokyo",
+                    "LONDON": "Europe/London", "UK": "Europe/London", "GMT": "UTC",
+                    "NEW YORK": "America/New_York", "EST": "America/New_York", "PST": "America/Los_Angeles"
+                }
+                tz_norm = tz_aliases.get(tz_str.upper(), tz_str)
+                try:
+                    tz = zoneinfo.ZoneInfo(tz_norm)
+                    now = datetime.datetime.now(tz)
+                    res_payload = {"timezone": tz_norm, "current_time": now.strftime("%Y-%m-%d %H:%M:%S %Z (UTC%z)"), "day_of_week": now.strftime("%A")}
+                except Exception:
+                    res_payload = {"error": f"Unknown timezone '{tz_str}'. Supported IANA timezones: Asia/Bangkok, UTC, America/New_York, etc."}
 
             elif name == "count_text_stats":
-                text = arguments.get("text", "")
-                words = len(re.findall(r'\w+', text))
-                lines = len(text.splitlines())
-                res_payload = {"char_count_total": len(text), "char_count_no_spaces": len(text.replace(" ", "")), "word_count": words, "line_count": lines}
+                text = str(arguments.get("text", "")).strip()
+                if not text:
+                    res_payload = {"error": "Please provide non-empty text to analyze"}
+                else:
+                    words = len(re.findall(r'\w+', text))
+                    lines = len(text.splitlines())
+                    res_payload = {"char_count_total": len(text), "char_count_no_spaces": len(text.replace(" ", "")), "word_count": words, "line_count": lines}
 
             elif name == "date_difference":
-                try:
-                    d1 = datetime.datetime.strptime(arguments.get("start_date"), "%Y-%m-%d")
-                    d2 = datetime.datetime.strptime(arguments.get("end_date"), "%Y-%m-%d")
-                    diff_days = abs((d2 - d1).days)
+                s1 = str(arguments.get("start_date", "")).strip()
+                s2 = str(arguments.get("end_date", "")).strip()
+                parsed1 = None
+                parsed2 = None
+                for fmt in ["%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%d-%m-%Y"]:
+                    try:
+                        if not parsed1: parsed1 = datetime.datetime.strptime(s1, fmt)
+                        if not parsed2: parsed2 = datetime.datetime.strptime(s2, fmt)
+                    except Exception: pass
+                
+                if parsed1 and parsed2:
+                    diff_days = abs((parsed2 - parsed1).days)
                     res_payload = {"days": diff_days, "weeks": round(diff_days / 7, 2), "approx_months": round(diff_days / 30.44, 2)}
-                except Exception as e:
-                    res_payload = {"error": f"Invalid date format (use YYYY-MM-DD): {str(e)}"}
+                else:
+                    res_payload = {"error": f"Invalid date format for '{s1}' or '{s2}'. Please use YYYY-MM-DD."}
 
             elif name == "generate_uuid":
                 res_payload = {"uuid": str(uuid.uuid4())}
 
             elif name == "generate_password":
-                length = int(arguments.get("length", 16))
-                symbols = arguments.get("include_symbols", True)
-                chars = string.ascii_letters + string.digits + (string.punctuation if symbols else "")
-                password = "".join(random.choice(chars) for _ in range(length))
-                res_payload = {"password": password, "length": length}
+                try:
+                    length = max(4, min(128, int(arguments.get("length", 16))))
+                    symbols = bool(arguments.get("include_symbols", True))
+                    chars = string.ascii_letters + string.digits + (string.punctuation if symbols else "")
+                    password = "".join(random.choice(chars) for _ in range(length))
+                    res_payload = {"password": password, "length": length}
+                except Exception as e:
+                    res_payload = {"error": f"Password generation error: {str(e)}"}
 
             elif name == "convert_unit":
-                val = float(arguments.get("value", 0))
-                cat = arguments.get("category", "distance")
-                fu = str(arguments.get("from_unit", "")).upper().strip()
-                tu = str(arguments.get("to_unit", "")).upper().strip()
-                converted = val
-                
-                # Normalize unit aliases
-                if fu in ["INCH", "INCHES", "IN"]: fu = "INCH"
-                if tu in ["INCH", "INCHES", "IN"]: tu = "INCH"
-                if fu in ["CENTIMETER", "CENTIMETERS", "CM"]: fu = "CM"
-                if tu in ["CENTIMETER", "CENTIMETERS", "CM"]: tu = "CM"
-                if fu in ["METER", "METERS", "M"]: fu = "M"
-                if tu in ["METER", "METERS", "M"]: tu = "M"
-                if fu in ["KILOMETER", "KILOMETERS", "KM"]: fu = "KM"
-                if tu in ["KILOMETER", "KILOMETERS", "KM"]: tu = "KM"
-                if fu in ["MILE", "MILES"]: fu = "MILES"
-                if tu in ["MILE", "MILES"]: tu = "MILES"
-                if fu in ["FOOT", "FEET", "FT"]: fu = "FT"
-                if tu in ["FOOT", "FEET", "FT"]: tu = "FT"
+                try:
+                    val = float(arguments.get("value", 0))
+                    cat = str(arguments.get("category", "distance")).lower().strip()
+                    fu = str(arguments.get("from_unit", "")).upper().strip()
+                    tu = str(arguments.get("to_unit", "")).upper().strip()
+                    converted = None
+                    
+                    if fu in ["INCH", "INCHES", "IN"]: fu = "INCH"
+                    if tu in ["INCH", "INCHES", "IN"]: tu = "INCH"
+                    if fu in ["CENTIMETER", "CENTIMETERS", "CM"]: fu = "CM"
+                    if tu in ["CENTIMETER", "CENTIMETERS", "CM"]: tu = "CM"
+                    if fu in ["METER", "METERS", "M"]: fu = "M"
+                    if tu in ["METER", "METERS", "M"]: tu = "M"
+                    if fu in ["KILOMETER", "KILOMETERS", "KM"]: fu = "KM"
+                    if tu in ["KILOMETER", "KILOMETERS", "KM"]: tu = "KM"
+                    if fu in ["MILE", "MILES"]: fu = "MILES"
+                    if tu in ["MILE", "MILES"]: tu = "MILES"
+                    if fu in ["FOOT", "FEET", "FT"]: fu = "FT"
+                    if tu in ["FOOT", "FEET", "FT"]: tu = "FT"
 
-                if cat == "temperature" or fu in ["C", "F", "K"]:
-                    if fu == "C" and tu == "F": converted = (val * 9/5) + 32
-                    elif fu == "F" and tu == "C": converted = (val - 32) * 5/9
-                    elif fu == "C" and tu == "K": converted = val + 273.15
-                    elif fu == "K" and tu == "C": converted = val - 273.15
-                elif cat == "weight" or fu in ["KG", "LBS", "G"]:
-                    if fu == "KG" and tu == "LBS": converted = val * 2.20462
-                    elif fu == "LBS" and tu == "KG": converted = val / 2.20462
-                    elif fu == "KG" and tu == "G": converted = val * 1000
-                    elif fu == "G" and tu == "KG": converted = val / 1000
-                elif cat == "distance" or fu in ["INCH", "CM", "M", "KM", "MILES", "FT"]:
-                    meters = val
-                    if fu == "INCH": meters = val * 0.0254
-                    elif fu == "CM": meters = val / 100.0
-                    elif fu == "M": meters = val
-                    elif fu == "KM": meters = val * 1000.0
-                    elif fu == "MILES": meters = val * 1609.344
-                    elif fu == "FT": meters = val * 0.3048
+                    if cat == "temperature" or fu in ["C", "F", "K"]:
+                        if fu == tu: converted = val
+                        elif fu == "C" and tu == "F": converted = (val * 9/5) + 32
+                        elif fu == "F" and tu == "C": converted = (val - 32) * 5/9
+                        elif fu == "C" and tu == "K": converted = val + 273.15
+                        elif fu == "K" and tu == "C": converted = val - 273.15
+                    elif cat == "weight" or fu in ["KG", "LBS", "G"]:
+                        if fu == tu: converted = val
+                        elif fu == "KG" and tu == "LBS": converted = val * 2.20462
+                        elif fu == "LBS" and tu == "KG": converted = val / 2.20462
+                        elif fu == "KG" and tu == "G": converted = val * 1000
+                        elif fu == "G" and tu == "KG": converted = val / 1000
+                    elif cat == "distance" or fu in ["INCH", "CM", "M", "KM", "MILES", "FT"]:
+                        meters = val
+                        if fu == "INCH": meters = val * 0.0254
+                        elif fu == "CM": meters = val / 100.0
+                        elif fu == "M": meters = val
+                        elif fu == "KM": meters = val * 1000.0
+                        elif fu == "MILES": meters = val * 1609.344
+                        elif fu == "FT": meters = val * 0.3048
 
-                    if tu == "INCH": converted = meters / 0.0254
-                    elif tu == "CM": converted = meters * 100.0
-                    elif tu == "M": converted = meters
-                    elif tu == "KM": converted = meters / 1000.0
-                    elif tu == "MILES": converted = meters / 1609.344
-                    elif tu == "FT": converted = meters / 0.3048
-                elif cat == "data_size" or fu in ["B", "KB", "MB", "GB", "TB"]:
-                    if fu == "MB" and tu == "GB": converted = val / 1024
-                    elif fu == "GB" and tu == "MB": converted = val * 1024
-                    elif fu == "KB" and tu == "MB": converted = val / 1024
-                    elif fu == "GB" and tu == "TB": converted = val / 1024
+                        if tu == "INCH": converted = meters / 0.0254
+                        elif tu == "CM": converted = meters * 100.0
+                        elif tu == "M": converted = meters
+                        elif tu == "KM": converted = meters / 1000.0
+                        elif tu == "MILES": converted = meters / 1609.344
+                        elif tu == "FT": converted = meters / 0.3048
+                    elif cat == "data_size" or fu in ["B", "KB", "MB", "GB", "TB"]:
+                        if fu == tu: converted = val
+                        elif fu == "MB" and tu == "GB": converted = val / 1024
+                        elif fu == "GB" and tu == "MB": converted = val * 1024
+                        elif fu == "KB" and tu == "MB": converted = val / 1024
+                        elif fu == "GB" and tu == "TB": converted = val / 1024
 
-                res_payload = {"value": val, "from": fu, "to": tu, "result": round(converted, 4)}
+                    if converted is not None:
+                        res_payload = {"value": val, "from": fu, "to": tu, "result": round(converted, 4)}
+                    else:
+                        res_payload = {"error": f"Unsupported unit conversion from '{fu}' to '{tu}'. Supported: inch, cm, m, km, miles, ft, C, F, K, kg, lbs, MB, GB, etc."}
+                except Exception as e:
+                    res_payload = {"error": f"Unit conversion error: {str(e)}"}
 
             elif name == "calculate_stats":
-                nums = [float(n) for n in arguments.get("numbers", [])]
+                raw_nums = arguments.get("numbers", [])
+                nums = []
+                for n in raw_nums:
+                    try: nums.append(float(n))
+                    except Exception: pass
+                
                 if not nums:
-                    res_payload = {"error": "Empty numbers array"}
+                    res_payload = {"error": "Please provide a non-empty list of valid numbers"}
                 else:
                     mode_val = statistics.mode(nums) if len(nums) > 0 else None
                     std_val = statistics.stdev(nums) if len(nums) > 1 else 0.0
@@ -428,59 +486,70 @@ class LocalMcpHandler(BaseHTTPRequestHandler):
                     }
 
             elif name == "calculate_loan_pmt":
-                principal = float(arguments.get("principal", 0))
-                rate_pct = float(arguments.get("annual_rate_percent", 0))
-                years = int(arguments.get("term_years", 0))
-                if principal <= 0 or rate_pct <= 0 or years <= 0:
-                    res_payload = {"error": "Invalid principal, rate, or term"}
-                else:
-                    r = (rate_pct / 100.0) / 12.0
-                    n = years * 12
-                    pmt = (principal * r * (1 + r)**n) / ((1 + r)**n - 1)
-                    total_payment = pmt * n
-                    total_interest = total_payment - principal
-                    res_payload = {
-                        "principal": principal,
-                        "monthly_payment": round(pmt, 2),
-                        "total_payment": round(total_payment, 2),
-                        "total_interest": round(total_interest, 2),
-                        "total_months": n
-                    }
+                try:
+                    principal = float(arguments.get("principal", 0))
+                    rate_pct = float(arguments.get("annual_rate_percent", 0))
+                    years = int(arguments.get("term_years", 0))
+                    if principal <= 0 or rate_pct <= 0 or years <= 0:
+                        res_payload = {"error": "Principal, interest rate, and term years must be positive numbers"}
+                    else:
+                        r = (rate_pct / 100.0) / 12.0
+                        n = years * 12
+                        pmt = (principal * r * (1 + r)**n) / ((1 + r)**n - 1)
+                        total_payment = pmt * n
+                        total_interest = total_payment - principal
+                        res_payload = {
+                            "principal": principal,
+                            "monthly_payment": round(pmt, 2),
+                            "total_payment": round(total_payment, 2),
+                            "total_interest": round(total_interest, 2),
+                            "total_months": n
+                        }
+                except Exception as e:
+                    res_payload = {"error": f"Loan calculation error: {str(e)}"}
 
             elif name == "regex_extract":
-                text = arguments.get("text", "")
-                e_type = arguments.get("extract_type", "all")
-                emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
-                phones = re.findall(r'\+?\d{1,4}?[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}', text)
-                ips = re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', text)
-                urls = re.findall(r'https?://[^\s<>"]+', text)
-                
-                if e_type == "email": res_payload = {"emails": list(set(emails))}
-                elif e_type == "phone": res_payload = {"phones": list(set(phones))}
-                elif e_type == "ip": res_payload = {"ips": list(set(ips))}
-                elif e_type == "url": res_payload = {"urls": list(set(urls))}
-                else: res_payload = {"emails": list(set(emails)), "phones": list(set(phones)), "ips": list(set(ips)), "urls": list(set(urls))}
+                text = str(arguments.get("text", "")).strip()
+                raw_type = str(arguments.get("extract_type", "all")).lower().strip()
+                if not text:
+                    res_payload = {"error": "Please provide non-empty text for regex extraction"}
+                else:
+                    emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+                    phones = re.findall(r'\+?\d{1,4}?[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}', text)
+                    ips = re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', text)
+                    urls = re.findall(r'https?://[^\s<>"]+', text)
+                    
+                    if "email" in raw_type: res_payload = {"emails": list(set(emails))}
+                    elif "phone" in raw_type: res_payload = {"phones": list(set(phones))}
+                    elif "ip" in raw_type: res_payload = {"ips": list(set(ips))}
+                    elif "url" in raw_type: res_payload = {"urls": list(set(urls))}
+                    else: res_payload = {"emails": list(set(emails)), "phones": list(set(phones)), "ips": list(set(ips)), "urls": list(set(urls))}
 
             elif name == "strip_html":
-                html = arguments.get("html_content", "")
+                html = str(arguments.get("html_content", "")).strip()
                 clean_text = re.sub(r'<[^>]+>', '', html).strip()
                 res_payload = {"clean_text": clean_text}
 
             elif name == "parse_url":
-                raw_url = arguments.get("url", "")
-                parsed = urllib.parse.urlparse(raw_url)
-                params = urllib.parse.parse_qs(parsed.query)
-                res_payload = {
-                    "scheme": parsed.scheme,
-                    "hostname": parsed.hostname,
-                    "port": parsed.port,
-                    "path": parsed.path,
-                    "query_params": {k: v[0] if len(v) == 1 else v for k, v in params.items()}
-                }
+                raw_url = str(arguments.get("url", "")).strip()
+                if not raw_url.startswith("http://") and not raw_url.startswith("https://"):
+                    raw_url = "https://" + raw_url
+                try:
+                    parsed = urllib.parse.urlparse(raw_url)
+                    params = urllib.parse.parse_qs(parsed.query)
+                    res_payload = {
+                        "scheme": parsed.scheme,
+                        "hostname": parsed.hostname,
+                        "port": parsed.port,
+                        "path": parsed.path,
+                        "query_params": {k: v[0] if len(v) == 1 else v for k, v in params.items()}
+                    }
+                except Exception as e:
+                    res_payload = {"error": f"URL parse error: {str(e)}"}
 
             elif name == "base64_encode_decode":
-                text = arguments.get("text", "")
-                op = arguments.get("operation", "encode")
+                text = str(arguments.get("text", ""))
+                op = str(arguments.get("operation", "encode")).lower()
                 try:
                     if op == "encode":
                         res_payload = {"result": base64.b64encode(text.encode('utf-8')).decode('utf-8')}
@@ -490,30 +559,36 @@ class LocalMcpHandler(BaseHTTPRequestHandler):
                     res_payload = {"error": f"Base64 error: {str(e)}"}
 
             elif name == "url_encode_decode":
-                text = arguments.get("text", "")
-                op = arguments.get("operation", "encode")
-                if op == "encode":
-                    res_payload = {"result": urllib.parse.quote(text)}
-                else:
-                    res_payload = {"result": urllib.parse.unquote(text)}
+                text = str(arguments.get("text", ""))
+                op = str(arguments.get("operation", "encode")).lower()
+                try:
+                    if op == "encode":
+                        res_payload = {"result": urllib.parse.quote(text)}
+                    else:
+                        res_payload = {"result": urllib.parse.unquote(text)}
+                except Exception as e:
+                    res_payload = {"error": f"URL encode/decode error: {str(e)}"}
 
             elif name == "csv_to_json":
-                csv_text = arguments.get("csv_text", "")
-                try:
-                    reader = csv.DictReader(io.StringIO(csv_text.strip()))
-                    res_payload = {"rows": list(reader)}
-                except Exception as e:
-                    res_payload = {"error": f"CSV parse error: {str(e)}"}
+                csv_text = str(arguments.get("csv_text", "")).strip()
+                if not csv_text:
+                    res_payload = {"error": "Please provide non-empty CSV text"}
+                else:
+                    try:
+                        reader = csv.DictReader(io.StringIO(csv_text))
+                        res_payload = {"rows": list(reader)}
+                    except Exception as e:
+                        res_payload = {"error": f"CSV parse error: {str(e)}"}
 
             elif name == "text_diff":
-                orig = arguments.get("original_text", "").splitlines()
-                mod = arguments.get("modified_text", "").splitlines()
+                orig = str(arguments.get("original_text", "")).splitlines()
+                mod = str(arguments.get("modified_text", "")).splitlines()
                 diff = list(difflib.unified_diff(orig, mod, fromfile='original', tofile='modified', lineterm=''))
                 res_payload = {"diff": diff}
 
             else:
                 self._set_headers(404)
-                self.wfile.write(json.dumps({"jsonrpc": "2.0", "id": msg_id, "error": {"code": -32601, "message": "Tool not found"}}).encode('utf-8'))
+                self.wfile.write(json.dumps({"jsonrpc": "2.0", "id": msg_id, "error": {"code": -32601, "message": f"Tool '{name}' not found"}}).encode('utf-8'))
                 return
 
             resp_data = {
