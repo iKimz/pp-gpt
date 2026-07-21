@@ -162,9 +162,10 @@ const parsedMessage = computed(() => {
             })
           }
         } catch (e) {}
+        text = text.replace(jsonStr, '')
       })
       toolCalls = Object.values(toolMap)
-      text = text.replace(/\{"content":.*?"tool_calls":\[.*?\]\}/g, '').trim()
+      text = text.trim()
     }
   }
 

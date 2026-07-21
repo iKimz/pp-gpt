@@ -356,21 +356,57 @@ class LocalMcpHandler(BaseHTTPRequestHandler):
                 res_payload = {"password": password, "length": length}
 
             elif name == "convert_unit":
-                val, cat = float(arguments.get("value", 0)), arguments.get("category")
-                fu, tu = arguments.get("from_unit", "").upper(), arguments.get("to_unit", "").upper()
+                val = float(arguments.get("value", 0))
+                cat = arguments.get("category", "distance")
+                fu = str(arguments.get("from_unit", "")).upper().strip()
+                tu = str(arguments.get("to_unit", "")).upper().strip()
                 converted = val
-                if cat == "temperature":
+                
+                # Normalize unit aliases
+                if fu in ["INCH", "INCHES", "IN"]: fu = "INCH"
+                if tu in ["INCH", "INCHES", "IN"]: tu = "INCH"
+                if fu in ["CENTIMETER", "CENTIMETERS", "CM"]: fu = "CM"
+                if tu in ["CENTIMETER", "CENTIMETERS", "CM"]: tu = "CM"
+                if fu in ["METER", "METERS", "M"]: fu = "M"
+                if tu in ["METER", "METERS", "M"]: tu = "M"
+                if fu in ["KILOMETER", "KILOMETERS", "KM"]: fu = "KM"
+                if tu in ["KILOMETER", "KILOMETERS", "KM"]: tu = "KM"
+                if fu in ["MILE", "MILES"]: fu = "MILES"
+                if tu in ["MILE", "MILES"]: tu = "MILES"
+                if fu in ["FOOT", "FEET", "FT"]: fu = "FT"
+                if tu in ["FOOT", "FEET", "FT"]: tu = "FT"
+
+                if cat == "temperature" or fu in ["C", "F", "K"]:
                     if fu == "C" and tu == "F": converted = (val * 9/5) + 32
                     elif fu == "F" and tu == "C": converted = (val - 32) * 5/9
-                elif cat == "weight":
+                    elif fu == "C" and tu == "K": converted = val + 273.15
+                    elif fu == "K" and tu == "C": converted = val - 273.15
+                elif cat == "weight" or fu in ["KG", "LBS", "G"]:
                     if fu == "KG" and tu == "LBS": converted = val * 2.20462
                     elif fu == "LBS" and tu == "KG": converted = val / 2.20462
-                elif cat == "distance":
-                    if fu == "KM" and tu == "MILES": converted = val * 0.621371
-                    elif fu == "MILES" and tu == "KM": converted = val / 0.621371
-                elif cat == "data_size":
+                    elif fu == "KG" and tu == "G": converted = val * 1000
+                    elif fu == "G" and tu == "KG": converted = val / 1000
+                elif cat == "distance" or fu in ["INCH", "CM", "M", "KM", "MILES", "FT"]:
+                    meters = val
+                    if fu == "INCH": meters = val * 0.0254
+                    elif fu == "CM": meters = val / 100.0
+                    elif fu == "M": meters = val
+                    elif fu == "KM": meters = val * 1000.0
+                    elif fu == "MILES": meters = val * 1609.344
+                    elif fu == "FT": meters = val * 0.3048
+
+                    if tu == "INCH": converted = meters / 0.0254
+                    elif tu == "CM": converted = meters * 100.0
+                    elif tu == "M": converted = meters
+                    elif tu == "KM": converted = meters / 1000.0
+                    elif tu == "MILES": converted = meters / 1609.344
+                    elif tu == "FT": converted = meters / 0.3048
+                elif cat == "data_size" or fu in ["B", "KB", "MB", "GB", "TB"]:
                     if fu == "MB" and tu == "GB": converted = val / 1024
                     elif fu == "GB" and tu == "MB": converted = val * 1024
+                    elif fu == "KB" and tu == "MB": converted = val / 1024
+                    elif fu == "GB" and tu == "TB": converted = val / 1024
+
                 res_payload = {"value": val, "from": fu, "to": tu, "result": round(converted, 4)}
 
             elif name == "calculate_stats":
