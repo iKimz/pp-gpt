@@ -2,8 +2,9 @@
 FROM maven:3.9-amazoncorretto-17 AS builder
 WORKDIR /app
 COPY pom.xml .
+
 # Download dependencies first to cache them
-RUN mvn dependency:go-offline -B
+RUN mvn dependency:resolve -B
 # Copy source code and build
 COPY src ./src
 RUN mvn clean package -DskipTests
@@ -20,4 +21,4 @@ USER appuser
 COPY --from=builder /app/target/gateway-1.0.0-SNAPSHOT.jar app.jar
 
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
