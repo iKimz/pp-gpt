@@ -185,7 +185,7 @@
               v-model="form.name"
               type="text"
               required
-              placeholder="e.g. Firecrawl Search MCP"
+              placeholder="e.g. Local MCP"
               class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
             />
           </div>
@@ -196,7 +196,7 @@
               v-model="form.endpointUrl"
               type="url"
               required
-              placeholder="https://mcp.firecrawl.dev/v2/mcp-search"
+              placeholder="https://example-server.modelcontextprotocol.io/mcp"
               class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px]"
             />
           </div>
@@ -474,16 +474,39 @@ async function testServer(server) {
   }
 }
 
-function startOAuthPopup(server) {
+async function generatePkce() {
+  const array = new Uint8Array(32)
+  window.crypto.getRandomValues(array)
+  const verifier = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
+  
+  const encoder = new TextEncoder()
+  const data = encoder.encode(verifier)
+  const hash = await window.crypto.subtle.digest('SHA-256', data)
+  
+  const challenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+    
+  return { verifier, challenge }
+}
+
+async function startOAuthPopup(server) {
   const baseUrl = server.oauthAuthorizeUrl || 'https://www.firecrawl.dev/api/oauth/authorize'
   const redirectUri = `${window.location.origin}${import.meta.env.BASE_URL}api/v1/mcp/oauth/callback`
+  const serverId = server.id || server.serverId || ''
   
+  const pkce = await generatePkce()
+  sessionStorage.setItem(`pkce_verifier_${serverId}`, pkce.verifier)
+
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: server.oauthClientId || 'pp-gpt',
     redirect_uri: redirectUri,
-    state: server.id || server.serverId || '',
-    scope: 'firecrawl:global'
+    state: serverId,
+    scope: 'firecrawl:global',
+    code_challenge: pkce.challenge,
+    code_challenge_method: 'S256'
   })
 
   const fullAuthUrl = baseUrl.includes('?') 
