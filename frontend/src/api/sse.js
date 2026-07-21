@@ -13,7 +13,11 @@
  * @param {AbortSignal} signal  - AbortController signal for stop-generation
  */
 export async function streamChat(payload, token, onChunk, onDone, signal) {
-  const response = await fetch('/api/v1/chat/stream', {
+  const rawBase = import.meta.env.BASE_URL || '/'
+  const baseURL = rawBase.endsWith('/') ? rawBase : rawBase + '/'
+  const streamUrl = `${baseURL}api/v1/chat/stream`.replace(/\/+/g, '/')
+
+  const response = await fetch(streamUrl, {
     method:  'POST',
     headers: {
       'Content-Type':  'application/json',
