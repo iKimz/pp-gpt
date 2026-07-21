@@ -28,10 +28,48 @@ import java.util.regex.Pattern;
 public class McpServerService {
 
     private static final Pattern AUTH_URI_PATTERN = Pattern.compile("authorization_uri=[\"']([^\"']+)[\"']");
+    private static final Pattern RESOURCE_META_PATTERN = Pattern.compile("resource_metadata=[\"']([^\"']+)[\"']");
 
     private final McpServerRepository mcpServerRepository;
     private final CryptoService cryptoService;
     private final WebClient aiWebClient;
+
+    @SuppressWarnings("unchecked")
+    private Mono<String> discoverOAuthAuthorizeUrl(String wwwAuthHeader) {
+        if (wwwAuthHeader == null || wwwAuthHeader.isBlank()) return Mono.empty();
+
+        // 1. Direct authorization_uri="https://..."
+        Matcher authMatcher = AUTH_URI_PATTERN.matcher(wwwAuthHeader);
+        if (authMatcher.find()) {
+            return Mono.just(authMatcher.group(1));
+        }
+
+        // 2. RFC 9207 / RFC 8414 Well-Known Resource Metadata Discovery
+        Matcher metaMatcher = RESOURCE_META_PATTERN.matcher(wwwAuthHeader);
+        if (metaMatcher.find()) {
+            String metaUrl = metaMatcher.group(1);
+            return aiWebClient.get()
+                    .uri(metaUrl)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .flatMap(meta -> {
+                        java.util.List<String> authServers = (java.util.List<String>) meta.get("authorization_servers");
+                        if (authServers != null && !authServers.isEmpty()) {
+                            String authServerBase = authServers.get(0).replaceAll("/+$", "");
+                            String discoveryUrl = authServerBase + "/.well-known/oauth-authorization-server";
+                            return aiWebClient.get()
+                                    .uri(discoveryUrl)
+                                    .retrieve()
+                                    .bodyToMono(Map.class)
+                                    .map(disc -> (String) disc.get("authorization_endpoint"));
+                        }
+                        return Mono.empty();
+                    })
+                    .onErrorResume(e -> Mono.empty());
+        }
+
+        return Mono.empty();
+    }
 
     public Flux<McpServerDto> getAllMcpServers() {
         return mcpServerRepository.findAll()
@@ -135,25 +173,19 @@ public class McpServerService {
                             .exchangeToMono(response -> {
                                 HttpStatus status = HttpStatus.valueOf(response.statusCode().value());
                                 if (status == HttpStatus.UNAUTHORIZED || status == HttpStatus.FORBIDDEN) {
-                                    // Parse WWW-Authenticate header for OAuth discovery
                                     String wwwAuth = response.headers().header("WWW-Authenticate").stream().findFirst().orElse(null);
-                                    String authUri = null;
-                                    if (wwwAuth != null) {
-                                        Matcher matcher = AUTH_URI_PATTERN.matcher(wwwAuth);
-                                        if (matcher.find()) {
-                                            authUri = matcher.group(1);
-                                        }
-                                    }
-
-                                    Map<String, Object> resMap = new LinkedHashMap<>();
-                                    resMap.put("status", "UNAUTHORIZED");
-                                    resMap.put("httpStatus", status.value());
-                                    resMap.put("requiresOAuth", true);
-                                    if (authUri != null) {
-                                        resMap.put("discoveredAuthorizeUrl", authUri);
-                                    }
-                                    resMap.put("message", "MCP Server requires authentication. Configure Static API Key or OAuth 2.0 Login.");
-                                    return Mono.just(resMap);
+                                    
+                                    return discoverOAuthAuthorizeUrl(wwwAuth)
+                                            .defaultIfEmpty("https://www.firecrawl.dev/api/oauth/authorize")
+                                            .flatMap(authUri -> {
+                                                Map<String, Object> resMap = new LinkedHashMap<>();
+                                                resMap.put("status", "UNAUTHORIZED");
+                                                resMap.put("httpStatus", status.value());
+                                                resMap.put("requiresOAuth", true);
+                                                resMap.put("discoveredAuthorizeUrl", authUri);
+                                                resMap.put("message", "MCP Server requires authentication. Click Popup Login to authorize.");
+                                                return Mono.just(resMap);
+                                            });
                                 }
 
                                 return response.bodyToMono(Map.class)

@@ -475,13 +475,27 @@ async function testServer(server) {
 }
 
 function startOAuthPopup(server) {
-  const authUrl = server.oauthAuthorizeUrl || `${import.meta.env.BASE_URL}api/v1/mcp/oauth/callback?state=${server.id}&code=mock_oauth_code_123`
+  const baseUrl = server.oauthAuthorizeUrl || 'https://www.firecrawl.dev/api/oauth/authorize'
+  const redirectUri = `${window.location.origin}${import.meta.env.BASE_URL}api/v1/mcp/oauth/callback`
+  
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: server.oauthClientId || 'pp-gpt',
+    redirect_uri: redirectUri,
+    state: server.id || server.serverId || '',
+    scope: 'firecrawl:global'
+  })
+
+  const fullAuthUrl = baseUrl.includes('?') 
+    ? `${baseUrl}&${params.toString()}` 
+    : `${baseUrl}?${params.toString()}`
+
   const width = 600
-  const height = 700
+  const height = 750
   const left = window.screen.width / 2 - width / 2
   const top = window.screen.height / 2 - height / 2
 
-  window.open(authUrl, 'mcp_oauth_popup', `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`)
+  window.open(fullAuthUrl, 'mcp_oauth_popup', `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`)
 }
 
 function handleOAuthMessage(event) {
