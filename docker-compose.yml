@@ -8,8 +8,6 @@ services:
       MARIADB_DATABASE: ppgpt
       MARIADB_USER: ppgpt
       MARIADB_PASSWORD: ppgpt_password
-    ports:
-      - "3306:3306"
     volumes:
       - ./data/mariadb:/var/lib/mysql
     networks:
@@ -25,8 +23,6 @@ services:
     container_name: ppgpt-redis
     restart: unless-stopped
     command: redis-server --appendonly yes
-    ports:
-      - "6379:6379"
     volumes:
       - ./data/redis:/data
     networks:
@@ -58,8 +54,6 @@ services:
       # 64-character hex string for AES-256 (used by CryptoService)
       # You can generate a new one via: openssl rand -hex 32
       ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-    ports:
-      - "8080:8080"
     networks:
       - ai-gateway-net
 
