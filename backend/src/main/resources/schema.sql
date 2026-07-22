@@ -18,10 +18,14 @@ CREATE TABLE IF NOT EXISTS models (
     max_history_messages INT          NOT NULL DEFAULT 10,
     model_type           VARCHAR(20)  NOT NULL DEFAULT 'GENERATION',
     supports_vision      BOOLEAN      NOT NULL DEFAULT FALSE,
+    supports_tools       BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_models PRIMARY KEY (id),
     INDEX idx_models_active (is_active)
 );
+
+-- Schema Migration for Existing Databases
+ALTER TABLE models ADD COLUMN IF NOT EXISTS supports_tools BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- User Groups
 CREATE TABLE IF NOT EXISTS user_groups (

@@ -74,6 +74,11 @@ public class Model {
     @Column("supports_vision")
     private boolean supportsVision;
 
+    /** Indicates if the model supports tool calling / MCP tools */
+    @Column("supports_tools")
+    @Builder.Default
+    private boolean supportsTools = true;
+
     @Column("created_at")
     private LocalDateTime createdAt;
 }

@@ -106,6 +106,7 @@ public class ChatService {
                                                 .endpointUrl(m.getEndpointUrl())
                                                 .isActive(m.isActive())
                                                 .supportsVision(m.isSupportsVision())
+                                                .supportsTools(m.isSupportsTools())
                                                 .build());
         }
 
@@ -293,11 +294,11 @@ public class ChatService {
                                                 long startTime = System.currentTimeMillis();
 
                                                 // ── Delegate to provider-specific adapter ─────────────────────
-                                                Mono<List<com.ppgpt.gateway.dto.ToolDto>> toolsMono = (request
-                                                                .getTools() != null && !request.getTools().isEmpty())
+                                                Mono<List<com.ppgpt.gateway.dto.ToolDto>> toolsMono = (model.isSupportsTools())
+                                                                ? ((request.getTools() != null && !request.getTools().isEmpty())
                                                                                 ? Mono.just(request.getTools())
-                                                                                : mcpServerService.getActiveTools()
-                                                                                                .collectList();
+                                                                                : mcpServerService.getActiveTools().collectList())
+                                                                : Mono.just(Collections.emptyList());
 
                                                 return toolsMono.flatMapMany(activeTools -> {
                                                         request.setTools(activeTools);

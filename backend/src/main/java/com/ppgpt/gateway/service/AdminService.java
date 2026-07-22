@@ -74,6 +74,7 @@ public class AdminService {
                 .maxHistoryMessages(dto.getMaxHistoryMessages() > 0 ? dto.getMaxHistoryMessages() : 10)
                 .modelType(dto.getModelType() != null ? dto.getModelType() : "GENERATION")
                 .supportsVision(dto.isSupportsVision())
+                .supportsTools(dto.isSupportsTools())
                 .createdAt(LocalDateTime.now(ZoneOffset.UTC))
                 .build();
         return entityTemplate.insert(model).map(this::toModelDto);
@@ -98,6 +99,7 @@ public class AdminService {
                     if (dto.getModelType() != null)
                         existing.setModelType(dto.getModelType());
                     existing.setSupportsVision(dto.isSupportsVision());
+                    existing.setSupportsTools(dto.isSupportsTools());
                     if (dto.getCredentials() != null && !dto.getCredentials().isBlank()) {
                         existing.setCredentialsEncrypted(cryptoService.encrypt(dto.getCredentials()));
                     }
@@ -425,6 +427,7 @@ public class AdminService {
                 .maxHistoryMessages(m.getMaxHistoryMessages())
                 .modelType(m.getModelType())
                 .supportsVision(m.isSupportsVision())
+                .supportsTools(m.isSupportsTools())
                 // credentials intentionally NOT returned
                 .build();
     }

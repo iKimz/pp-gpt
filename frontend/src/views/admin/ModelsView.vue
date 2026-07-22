@@ -94,12 +94,18 @@
           </div>
         </div>
 
-        <div v-if="form.modelType === 'GENERATION'" class="p-3 bg-surface-800 rounded-lg border border-surface-600">
-          <label class="flex items-center gap-2 cursor-pointer text-sm font-medium text-[#1a1b22]">
-            <input type="checkbox" v-model="form.supportsVision" class="accent-brand-500 w-4 h-4" />
-            👁️ Supports Image & File Uploads (Multimodal Vision)
-          </label>
-          <p class="text-[11px] text-[#4d4732] mt-1 pl-6">Enable for models capable of processing images (e.g., GPT-4o, Claude 3.5 Sonnet).</p>
+        <div v-if="form.modelType === 'GENERATION'" class="space-y-1.5">
+          <label class="label">Model Capabilities</label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-surface-800 rounded-lg border border-surface-600">
+            <label class="flex items-center gap-2 cursor-pointer text-sm font-medium text-[#1a1b22] hover:opacity-80 transition-opacity">
+              <input type="checkbox" v-model="form.supportsVision" class="accent-brand-500 w-4 h-4 rounded" />
+              👁️ Supports Multimodal Vision
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm font-medium text-[#1a1b22] hover:opacity-80 transition-opacity">
+              <input type="checkbox" v-model="form.supportsTools" class="accent-brand-500 w-4 h-4 rounded" />
+              🔧 Supports Tool Calling (MCP)
+            </label>
+          </div>
         </div>
 
         <div>
@@ -261,7 +267,8 @@ const form = reactive({
   maxHistoryMessages:  10,
   systemPrompt:        '',
   modelType:           'GENERATION',
-  supportsVision:      false
+  supportsVision:      false,
+  supportsTools:       true
 })
 
 // ─── Credential format reference cards ────────────────────────────────
@@ -339,7 +346,7 @@ function openCreate() {
   Object.assign(form, {
     name: '', provider: 'OPENAI', modelName: '', endpointUrl: '', credentials: '', active: true,
     temperature: 0.7, timeoutMs: 30000, maxHistoryMessages: 10, systemPrompt: '', modelType: 'GENERATION',
-    supportsVision: false
+    supportsVision: false, supportsTools: true
   })
   showModal.value = true
 }
@@ -353,7 +360,8 @@ function openEdit(model) {
     credentials: '',
     systemPrompt: model.systemPrompt || '',
     modelType: model.modelType || 'GENERATION',
-    supportsVision: !!model.supportsVision
+    supportsVision: !!model.supportsVision,
+    supportsTools: model.supportsTools !== false
   })
   showModal.value = true
 }

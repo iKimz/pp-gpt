@@ -49,4 +49,8 @@ public class ModelDto {
 
     /** Indicates if the model supports image attachments (multimodal) */
     private boolean supportsVision;
+
+    /** Indicates if the model supports tool calling / MCP tools */
+    @Builder.Default
+    private boolean supportsTools = true;
 }
