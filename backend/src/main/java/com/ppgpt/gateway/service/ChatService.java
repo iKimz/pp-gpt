@@ -453,114 +453,94 @@ public class ChatService {
 
         @SuppressWarnings("unchecked")
         private Flux<String> executeAgenticToolLoop(ChatRequest request, Model model, String decryptedCredentials) {
-                AtomicReference<StringBuilder> firstPassAcc = new AtomicReference<>(new StringBuilder());
+                AtomicReference<StringBuilder> toolCallAcc = new AtomicReference<>(new StringBuilder());
 
-                return adapterFactory.resolve(model.getProvider())
+                Flux<String> pass1Flux = adapterFactory.resolve(model.getProvider())
                                 .streamChat(request, model, decryptedCredentials)
-                                .doOnNext(fragment -> {
-                                        if (fragment != null)
-                                                firstPassAcc.get().append(fragment);
-                                })
-                                .ignoreElements()
-                                .thenMany(Flux.defer(() -> {
-                                        String fullFirstPass = firstPassAcc.get().toString();
-
-                                        if (fullFirstPass.contains("tool_calls")) {
-                                                log.info("[ChatService] Tool calls detected in 1st pass. Executing agentic tool loop...");
-
-                                                List<Map<String, Object>> toolCalls = parseToolCallsFromStream(
-                                                                fullFirstPass);
-                                                if (toolCalls != null && !toolCalls.isEmpty()) {
-                                                        return Flux.fromIterable(toolCalls)
-                                                                        .concatMap(tc -> {
-                                                                                String callId = (String) tc.get("id");
-                                                                                Map<String, Object> func = (Map<String, Object>) tc
-                                                                                                .get("function");
-                                                                                String name = (String) func.get("name");
-                                                                                Object rawArgs = func.get("arguments");
-                                                                                Map<String, Object> argsMap = Collections
-                                                                                                .emptyMap();
-                                                                                if (rawArgs instanceof Map) {
-                                                                                        argsMap = (Map<String, Object>) rawArgs;
-                                                                                } else if (rawArgs instanceof String
-                                                                                                && !((String) rawArgs)
-                                                                                                                .isBlank()) {
-                                                                                        try {
-                                                                                                argsMap = objectMapper
-                                                                                                                .readValue((String) rawArgs,
-                                                                                                                                Map.class);
-                                                                                        } catch (Exception e) {
-                                                                                        }
-                                                                                }
-
-                                                                                log.info("[Agentic] Executing tool {} with args {}",
-                                                                                                name, argsMap);
-                                                                                return mcpServerService
-                                                                                                .executeTool(name,
-                                                                                                                argsMap)
-                                                                                                .map(toolResult -> Map
-                                                                                                                .<String, Object>of(
-                                                                                                                                "role",
-                                                                                                                                "tool",
-                                                                                                                                "tool_call_id",
-                                                                                                                                callId != null ? callId
-                                                                                                                                                : "call_1",
-                                                                                                                                "name",
-                                                                                                                                name,
-                                                                                                                                "content",
-                                                                                                                                toolResult));
-                                                                        })
-                                                                        .collectList()
-                                                                        .flatMapMany(toolResults -> {
-                                                                                ChatRequest pass2Req = new ChatRequest();
-                                                                                pass2Req.setModelId(
-                                                                                                request.getModelId());
-                                                                                pass2Req.setMessage(
-                                                                                                request.getMessage());
-                                                                                pass2Req.setSessionId(
-                                                                                                request.getSessionId());
-                                                                                pass2Req.setImages(request.getImages());
-                                                                                pass2Req.setTools(Collections.emptyList());
-
-                                                                                List<Map<String, Object>> history = new ArrayList<>();
-                                                                                if (request.getHistory() != null) {
-                                                                                        history.addAll(request
-                                                                                                        .getHistory());
-                                                                                }
-                                                                                history.add(Map.of("role", "assistant",
-                                                                                                "content", "",
-                                                                                                "tool_calls",
-                                                                                                toolCalls));
-                                                                                history.addAll(toolResults);
-
-                                                                                pass2Req.setHistory(history);
-
-                                                                                log.info("[Agentic] Sending 2nd pass request to model with tool execution results...");
-                                                                                return adapterFactory.resolve(
-                                                                                                model.getProvider())
-                                                                                                .streamChat(pass2Req,
-                                                                                                                model,
-                                                                                                                decryptedCredentials)
-                                                                                                .defaultIfEmpty("[ขออภัยครับ ระบบไม่สามารถประมวลผลคำตอบจากเครื่องมือได้ในขณะนี้]");
-                                                                        });
-                                                }
+                                .flatMap(fragment -> {
+                                        if (fragment == null || fragment.isEmpty()) {
+                                                return Mono.empty();
                                         }
-
-                                        return Flux.just(fullFirstPass);
-                                }))
-                                .onErrorResume(ex -> {
-                                        log.warn("[Agentic] Tool execution or model request failed with error: {}. Retrying without tools...", ex.getMessage());
-                                        ChatRequest fallbackReq = new ChatRequest();
-                                        fallbackReq.setModelId(request.getModelId());
-                                        fallbackReq.setMessage(request.getMessage());
-                                        fallbackReq.setSessionId(request.getSessionId());
-                                        fallbackReq.setImages(request.getImages());
-                                        fallbackReq.setHistory(request.getHistory());
-                                        fallbackReq.setTools(Collections.emptyList());
-
-                                        return adapterFactory.resolve(model.getProvider())
-                                                        .streamChat(fallbackReq, model, decryptedCredentials);
+                                        if (fragment.contains("tool_calls")) {
+                                                toolCallAcc.get().append(fragment);
+                                                return Mono.empty(); // Suppress tool call JSON fragment from UI stream
+                                        }
+                                        return Mono.just(fragment); // Stream live text fragment directly to UI
                                 });
+
+                return pass1Flux.concatWith(Flux.defer(() -> {
+                        String fullToolCallStr = toolCallAcc.get().toString();
+
+                        if (fullToolCallStr.contains("tool_calls")) {
+                                log.info("[ChatService] Tool calls detected in 1st pass. Executing agentic tool loop...");
+
+                                List<Map<String, Object>> toolCalls = parseToolCallsFromStream(fullToolCallStr);
+                                if (toolCalls != null && !toolCalls.isEmpty()) {
+                                        return Flux.fromIterable(toolCalls)
+                                                        .concatMap(tc -> {
+                                                                String callId = (String) tc.get("id");
+                                                                Map<String, Object> func = (Map<String, Object>) tc.get("function");
+                                                                String name = (String) func.get("name");
+                                                                Object rawArgs = func.get("arguments");
+                                                                Map<String, Object> argsMap = Collections.emptyMap();
+                                                                if (rawArgs instanceof Map) {
+                                                                        argsMap = (Map<String, Object>) rawArgs;
+                                                                } else if (rawArgs instanceof String && !((String) rawArgs).isBlank()) {
+                                                                        try {
+                                                                                argsMap = objectMapper.readValue((String) rawArgs, Map.class);
+                                                                        } catch (Exception ignored) {}
+                                                                }
+
+                                                                log.info("[Agentic] Executing tool {} with args {}", name, argsMap);
+                                                                return mcpServerService.executeTool(name, argsMap)
+                                                                                .map(toolResult -> Map.<String, Object>of(
+                                                                                                "role", "tool",
+                                                                                                "tool_call_id", callId != null ? callId : "call_1",
+                                                                                                "name", name,
+                                                                                                "content", toolResult
+                                                                                ));
+                                                        })
+                                                        .collectList()
+                                                        .flatMapMany(toolResults -> {
+                                                                ChatRequest pass2Req = new ChatRequest();
+                                                                pass2Req.setModelId(request.getModelId());
+                                                                pass2Req.setMessage(request.getMessage());
+                                                                pass2Req.setSessionId(request.getSessionId());
+                                                                pass2Req.setImages(request.getImages());
+                                                                pass2Req.setTools(Collections.emptyList());
+
+                                                                List<Map<String, Object>> history = new ArrayList<>();
+                                                                if (request.getHistory() != null) {
+                                                                        history.addAll(request.getHistory());
+                                                                }
+                                                                history.add(Map.of("role", "assistant", "content", "", "tool_calls", toolCalls));
+                                                                history.addAll(toolResults);
+
+                                                                pass2Req.setHistory(history);
+
+                                                                log.info("[Agentic] Sending 2nd pass request to model with tool execution results...");
+                                                                return adapterFactory.resolve(model.getProvider())
+                                                                                .streamChat(pass2Req, model, decryptedCredentials)
+                                                                                .defaultIfEmpty("[ขออภัยครับ ระบบไม่สามารถประมวลผลคำตอบจากเครื่องมือได้ในขณะนี้]");
+                                                        });
+                                }
+                        }
+
+                        return Flux.empty();
+                }))
+                .onErrorResume(ex -> {
+                        log.warn("[Agentic] Tool execution or model request failed with error: {}. Retrying without tools...", ex.getMessage());
+                        ChatRequest fallbackReq = new ChatRequest();
+                        fallbackReq.setModelId(request.getModelId());
+                        fallbackReq.setMessage(request.getMessage());
+                        fallbackReq.setSessionId(request.getSessionId());
+                        fallbackReq.setImages(request.getImages());
+                        fallbackReq.setHistory(request.getHistory());
+                        fallbackReq.setTools(Collections.emptyList());
+
+                        return adapterFactory.resolve(model.getProvider())
+                                        .streamChat(fallbackReq, model, decryptedCredentials);
+                });
         }
 
         @SuppressWarnings("unchecked")
