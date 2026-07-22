@@ -565,47 +565,81 @@ public class ChatService {
 
         @SuppressWarnings("unchecked")
         private List<Map<String, Object>> parseToolCallsFromStream(String rawStreamText) {
+                if (rawStreamText == null || rawStreamText.isBlank()) return Collections.emptyList();
                 Map<Integer, Map<String, Object>> toolMap = new LinkedHashMap<>();
+                String trimmedText = rawStreamText.trim();
+
                 try {
-                        Matcher m = Pattern.compile("\\{\"content\":.*?\"tool_calls\":\\[.*?\\]\\}")
+                        // Case 1: Direct JSON object string containing "tool_calls" (e.g. {"tool_calls": [...]})
+                        if (trimmedText.startsWith("{") && trimmedText.contains("\"tool_calls\"")) {
+                                try {
+                                        Map<String, Object> directObj = objectMapper.readValue(trimmedText, Map.class);
+                                        if (directObj.containsKey("tool_calls") && directObj.get("tool_calls") instanceof List) {
+                                                List<Map<String, Object>> tcList = (List<Map<String, Object>>) directObj.get("tool_calls");
+                                                for (Map<String, Object> tc : tcList) {
+                                                        if (tc != null && tc.containsKey("function")) {
+                                                                String callId = tc.get("id") != null ? tc.get("id").toString() : "call_1";
+                                                                Map<String, Object> fn = (Map<String, Object>) tc.get("function");
+                                                                String name = fn.get("name") != null ? fn.get("name").toString() : "";
+                                                                Object args = fn.get("arguments");
+                                                                Map<String, Object> toolObj = new LinkedHashMap<>();
+                                                                toolObj.put("id", callId);
+                                                                toolObj.put("type", "function");
+                                                                toolObj.put("function", Map.of("name", name, "arguments", args != null ? args : ""));
+                                                                toolMap.put(toolMap.size(), toolObj);
+                                                        }
+                                                }
+                                                if (!toolMap.isEmpty()) {
+                                                        return new ArrayList<>(toolMap.values());
+                                                }
+                                        }
+                                } catch (Exception ignored) {
+                                }
+                        }
+
+                        // Case 2: Regex matching for streaming SSE chunks containing {"content":..., "tool_calls": [...]} or {"tool_calls": [...]}
+                        Matcher m = Pattern.compile("(\\{.*?\"tool_calls\":\\[.*?\\]\\})")
                                         .matcher(rawStreamText);
                         while (m.find()) {
-                                String jsonStr = m.group();
-                                Map<String, Object> chunk = objectMapper.readValue(jsonStr, Map.class);
-                                List<Map<String, Object>> tcList = (List<Map<String, Object>>) chunk.get("tool_calls");
-                                if (tcList != null) {
-                                        for (Map<String, Object> tc : tcList) {
-                                                int idx = tc.containsKey("index")
-                                                                ? ((Number) tc.get("index")).intValue()
-                                                                : 0;
-                                                Map<String, Object> tool = toolMap.computeIfAbsent(idx, k -> {
-                                                        Map<String, Object> t = new LinkedHashMap<>();
-                                                        t.put("id", tc.get("id") != null ? tc.get("id") : "call_1");
-                                                        t.put("type", "function");
-                                                        Map<String, Object> fn = new LinkedHashMap<>();
-                                                        fn.put("name", "");
-                                                        fn.put("arguments", "");
-                                                        t.put("function", fn);
-                                                        return t;
-                                                });
+                                String jsonStr = m.group(1);
+                                try {
+                                        Map<String, Object> chunk = objectMapper.readValue(jsonStr, Map.class);
+                                        List<Map<String, Object>> tcList = (List<Map<String, Object>>) chunk.get("tool_calls");
+                                        if (tcList != null) {
+                                                for (Map<String, Object> tc : tcList) {
+                                                        int idx = tc.containsKey("index")
+                                                                        ? ((Number) tc.get("index")).intValue()
+                                                                        : 0;
+                                                        Map<String, Object> tool = toolMap.computeIfAbsent(idx, k -> {
+                                                                Map<String, Object> t = new LinkedHashMap<>();
+                                                                t.put("id", tc.get("id") != null ? tc.get("id") : "call_1");
+                                                                t.put("type", "function");
+                                                                Map<String, Object> fn = new LinkedHashMap<>();
+                                                                fn.put("name", "");
+                                                                fn.put("arguments", "");
+                                                                t.put("function", fn);
+                                                                return t;
+                                                        });
 
-                                                if (tc.get("id") != null)
-                                                        tool.put("id", tc.get("id"));
-                                                Map<String, Object> fn = (Map<String, Object>) tc.get("function");
-                                                if (fn != null) {
-                                                        Map<String, Object> targetFn = (Map<String, Object>) tool
-                                                                        .get("function");
-                                                        if (fn.get("name") != null
-                                                                        && !fn.get("name").toString().isBlank()) {
-                                                                targetFn.put("name", fn.get("name"));
-                                                        }
-                                                        if (fn.get("arguments") != null) {
-                                                                String currentArgs = (String) targetFn.get("arguments");
-                                                                targetFn.put("arguments", currentArgs
-                                                                                + fn.get("arguments").toString());
+                                                        if (tc.get("id") != null)
+                                                                tool.put("id", tc.get("id"));
+                                                        Map<String, Object> fn = (Map<String, Object>) tc.get("function");
+                                                        if (fn != null) {
+                                                                Map<String, Object> targetFn = (Map<String, Object>) tool
+                                                                                .get("function");
+                                                                if (fn.get("name") != null
+                                                                                && !fn.get("name").toString().isBlank()) {
+                                                                        targetFn.put("name", fn.get("name"));
+                                                                }
+                                                                if (fn.get("arguments") != null) {
+                                                                        String currentArgs = (String) targetFn.get("arguments");
+                                                                        targetFn.put("arguments", currentArgs
+                                                                                        + fn.get("arguments").toString());
+                                                                }
                                                         }
                                                 }
                                         }
+                                } catch (Exception ignored) {
                                 }
                         }
                 } catch (Exception e) {
