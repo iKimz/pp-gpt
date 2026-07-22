@@ -24,10 +24,24 @@
         <span :class="providerBadgeClass(value)">{{ value }}</span>
       </template>
       <template #cell-modelType="{ row, value }">
-        <span v-if="value === 'GUARDRAIL'" class="badge badge-orange inline-flex items-center gap-1 whitespace-nowrap">🛡️ Guardrail</span>
-        <div v-else class="flex items-center gap-1">
-          <span class="badge badge-blue inline-flex items-center gap-1 whitespace-nowrap">💬 Generation</span>
-          <span v-if="row.supportsVision" class="badge badge-purple inline-flex items-center gap-1 whitespace-nowrap">👁️ Vision</span>
+        <div class="flex flex-col gap-1.5 items-start py-0.5">
+          <!-- Primary Model Type (Top) -->
+          <span v-if="value === 'GUARDRAIL'" class="badge badge-orange inline-flex items-center gap-1 font-semibold text-[11px]">
+            🛡️ Guardrail
+          </span>
+          <span v-else class="badge badge-blue inline-flex items-center gap-1 font-semibold text-[11px]">
+            💬 Generation
+          </span>
+
+          <!-- Capability Micro-Chips (Bottom) -->
+          <div v-if="value !== 'GUARDRAIL' && (row.supportsVision || row.supportsTools !== false)" class="flex flex-wrap items-center gap-1">
+            <span v-if="row.supportsVision" class="text-[10px] leading-tight bg-purple-50 text-purple-700 border border-purple-200/80 rounded px-1.5 py-0.5 font-medium inline-flex items-center gap-1 shadow-xs">
+              👁️ Vision
+            </span>
+            <span v-if="row.supportsTools !== false" class="text-[10px] leading-tight bg-amber-50 text-amber-700 border border-amber-200/80 rounded px-1.5 py-0.5 font-medium inline-flex items-center gap-1 shadow-xs">
+              🔧 Tools
+            </span>
+          </div>
         </div>
       </template>
     </DataTable>
