@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ppgpt.gateway.domain.Model;
 import com.ppgpt.gateway.dto.ChatRequest;
+import com.ppgpt.gateway.dto.ToolDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -25,6 +26,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.PayloadPart;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -183,6 +185,7 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
 
         Map<String, Object> bodyMap = new LinkedHashMap<>();
 
+        // Base parameters for Bedrock / Anthropic / Custom Models
         bodyMap.put("anthropic_version", "bedrock-2023-05-31");
 
         if (model.getSystemPrompt() != null && !model.getSystemPrompt().isBlank()) {
@@ -193,9 +196,52 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
         bodyMap.put("max_tokens", 4096);
         bodyMap.put("temperature", model.getTemperature());
 
+        // Convert and attach Tools if present
+        if (request.getTools() != null && !request.getTools().isEmpty()) {
+            String modelIdName = (model.getModelName() != null ? model.getModelName() : "").toLowerCase();
+            boolean isAnthropic = modelIdName.contains("anthropic") || modelIdName.contains("claude");
+
+            List<Map<String, Object>> toolsList = new ArrayList<>();
+
+            for (ToolDto tool : request.getTools()) {
+                if (tool == null) continue;
+                String toolName = "";
+                String toolDesc = "";
+                Object inputSchema = Collections.emptyMap();
+
+                if (tool.function() != null) {
+                    toolName = tool.function().name() != null ? tool.function().name() : "";
+                    toolDesc = tool.function().description() != null ? tool.function().description() : "";
+                    if (tool.function().parameters() != null) {
+                        inputSchema = tool.function().parameters();
+                    }
+                }
+
+                if (isAnthropic) {
+                    toolsList.add(Map.of(
+                            "name", toolName,
+                            "description", toolDesc,
+                            "input_schema", inputSchema
+                    ));
+                } else {
+                    toolsList.add(Map.of(
+                            "type", "function",
+                            "function", Map.of(
+                                    "name", toolName,
+                                    "description", toolDesc,
+                                    "parameters", inputSchema
+                            )
+                    ));
+                }
+            }
+
+            bodyMap.put("tools", toolsList);
+        }
+
         try {
             log.debug("[Bedrock] Built request payload: {}", objectMapper.writeValueAsString(bodyMap));
         } catch (Exception e) {
+            log.warn("[Bedrock] Error serializing debug payload", e);
         }
 
         return bodyMap;
@@ -207,33 +253,89 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
                 return null;
             JsonNode node = objectMapper.readTree(raw);
 
-            // 1. OpenAI format (returned by some Bedrock proxies like LiteLLM)
+            // 1. OpenAI format tool_calls (returned by OpenAI-style Bedrock proxies / OSS models)
             JsonNode choices = node.path("choices");
             if (choices.isArray() && choices.size() > 0) {
-                JsonNode deltaContent = choices.get(0).path("delta").path("content");
-                if (!deltaContent.isMissingNode() && !deltaContent.isNull())
-                    return deltaContent.asText();
+                JsonNode delta = choices.get(0).path("delta");
+                if (delta.has("tool_calls")) {
+                    return objectMapper.writeValueAsString(Map.of("tool_calls", delta.path("tool_calls")));
+                }
+                JsonNode deltaContent = delta.path("content");
+                if (!deltaContent.isMissingNode() && !deltaContent.isNull()) {
+                    return stripReasoning(deltaContent.asText());
+                }
             }
 
-            // 2. Claude 3 format (Bedrock native)
-            JsonNode text = node.path("contentBlockDelta").path("delta").path("text");
-            if (!text.isMissingNode() && !text.isNull())
-                return text.asText();
+            // 2. Claude 3 / Bedrock Native Tool Calling Events
+            // A) Tool Call Start Event
+            if ("content_block_start".equals(node.path("type").asText())) {
+                JsonNode cb = node.path("content_block");
+                if ("tool_use".equals(cb.path("type").asText())) {
+                    String toolId = cb.path("id").asText("call_1");
+                    String toolName = cb.path("name").asText();
+                    Map<String, Object> toolCallObj = Map.of(
+                            "tool_calls", List.of(Map.of(
+                                    "index", 0,
+                                    "id", toolId,
+                                    "type", "function",
+                                    "function", Map.of("name", toolName, "arguments", "")
+                            ))
+                    );
+                    return objectMapper.writeValueAsString(toolCallObj);
+                }
+            }
 
-            // 3. Claude 2 format (completion)
+            // B) Tool Call Input Delta (Arguments Chunk)
+            if ("content_block_delta".equals(node.path("type").asText())) {
+                JsonNode deltaNode = node.path("delta");
+                if ("input_json_delta".equals(deltaNode.path("type").asText())) {
+                    String partialJson = deltaNode.path("partial_json").asText("");
+                    Map<String, Object> toolArgObj = Map.of(
+                            "tool_calls", List.of(Map.of(
+                                    "index", 0,
+                                    "function", Map.of("arguments", partialJson)
+                            ))
+                    );
+                    return objectMapper.writeValueAsString(toolArgObj);
+                }
+                if ("text_delta".equals(deltaNode.path("type").asText())) {
+                    return stripReasoning(deltaNode.path("text").asText(""));
+                }
+            }
+
+            // 3. Native Bedrock contentBlockDelta
+            JsonNode textDelta = node.path("contentBlockDelta").path("delta").path("text");
+            if (!textDelta.isMissingNode() && !textDelta.isNull()) {
+                return stripReasoning(textDelta.asText());
+            }
+
+            // 4. Claude 2 completion format
             JsonNode completion = node.path("completion");
-            if (!completion.isMissingNode() && !completion.isNull())
-                return completion.asText();
+            if (!completion.isMissingNode() && !completion.isNull()) {
+                return stripReasoning(completion.asText());
+            }
 
-            // 4. Claude generic delta
+            // 5. Generic delta.text
             JsonNode deltaText = node.path("delta").path("text");
-            if (!deltaText.isMissingNode() && !deltaText.isNull())
-                return deltaText.asText();
+            if (!deltaText.isMissingNode() && !deltaText.isNull()) {
+                return stripReasoning(deltaText.asText());
+            }
 
         } catch (JsonProcessingException e) {
             log.trace("[Bedrock] Non-JSON chunk, skipping");
         }
         return null;
+    }
+
+    private String stripReasoning(String text) {
+        if (text == null) return "";
+        if (text.contains("<reasoning>")) {
+            text = text.replaceAll("(?s)<reasoning>.*?</reasoning>", "");
+        }
+        if (text.contains("<think>")) {
+            text = text.replaceAll("(?s)<think>.*?</think>", "");
+        }
+        return text;
     }
 
     private JsonNode parseCreds(String json) {
@@ -254,3 +356,4 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
         return val.asText();
     }
 }
+
