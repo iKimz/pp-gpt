@@ -165,7 +165,12 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
                 msg.put("role", role);
 
                 if (turn.containsKey("content")) {
-                    msg.put("content", turn.get("content"));
+                    Object contentObj = turn.get("content");
+                    if ("assistant".equals(role) && contentObj instanceof String contentStr) {
+                        msg.put("content", stripReasoning(contentStr));
+                    } else {
+                        msg.put("content", contentObj);
+                    }
                 }
                 if (turn.containsKey("tool_call_id")) {
                     msg.put("tool_call_id", turn.get("tool_call_id"));
@@ -247,6 +252,9 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
                 if (tool.function() != null) {
                     toolName = tool.function().name() != null ? tool.function().name() : "";
                     toolDesc = tool.function().description() != null ? tool.function().description() : "";
+                    if (!isAnthropic && toolDesc.length() > 300) {
+                        toolDesc = toolDesc.substring(0, 300) + "...";
+                    }
                     if (tool.function().parameters() != null) {
                         inputSchema = tool.function().parameters();
                     }
