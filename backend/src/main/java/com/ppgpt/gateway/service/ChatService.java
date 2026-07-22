@@ -461,6 +461,7 @@ public class ChatService {
                                         if (fragment != null)
                                                 firstPassAcc.get().append(fragment);
                                 })
+                                .ignoreElements()
                                 .thenMany(Flux.defer(() -> {
                                         String fullFirstPass = firstPassAcc.get().toString();
 
