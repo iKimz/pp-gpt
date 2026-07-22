@@ -139,13 +139,22 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
         String modelIdName = (model.getModelName() != null ? model.getModelName() : "").toLowerCase();
         boolean isAnthropic = modelIdName.contains("anthropic") || modelIdName.contains("claude");
 
+        StringBuilder systemContent = new StringBuilder();
+        if (model.getSystemPrompt() != null && !model.getSystemPrompt().isBlank()) {
+            systemContent.append(model.getSystemPrompt());
+        }
+        if (request.getTools() != null && !request.getTools().isEmpty()) {
+            if (!systemContent.isEmpty()) systemContent.append("\n\n");
+            systemContent.append("IMPORTANT INSTRUCTION: You have access to real-time external tools in the 'tools' list (including get_current_time for real-time location time queries, convert_unit, etc.). Whenever the user asks for real-time information, current time, or calculations, YOU MUST USE THE PROVIDED TOOLS instead of refusing or saying you do not have tool access.");
+        }
+
         List<Map<String, Object>> bedrockMessages = new ArrayList<>();
 
         // System prompt for non-Anthropic models goes into messages
-        if (!isAnthropic && model.getSystemPrompt() != null && !model.getSystemPrompt().isBlank()) {
+        if (!isAnthropic && !systemContent.isEmpty()) {
             bedrockMessages.add(Map.of(
                     "role", "system",
-                    "content", model.getSystemPrompt()));
+                    "content", systemContent.toString()));
         }
 
         // Process message history preserving tool fields
@@ -213,8 +222,8 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
 
         if (isAnthropic) {
             bodyMap.put("anthropic_version", "bedrock-2023-05-31");
-            if (model.getSystemPrompt() != null && !model.getSystemPrompt().isBlank()) {
-                bodyMap.put("system", model.getSystemPrompt());
+            if (!systemContent.isEmpty()) {
+                bodyMap.put("system", systemContent.toString());
             }
         } else {
             bodyMap.put("model", model.getModelName());

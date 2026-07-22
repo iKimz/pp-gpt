@@ -546,7 +546,20 @@ public class ChatService {
                                         }
 
                                         return Flux.just(fullFirstPass);
-                                }));
+                                }))
+                                .onErrorResume(ex -> {
+                                        log.warn("[Agentic] Tool execution or model request failed with error: {}. Retrying without tools...", ex.getMessage());
+                                        ChatRequest fallbackReq = new ChatRequest();
+                                        fallbackReq.setModelId(request.getModelId());
+                                        fallbackReq.setMessage(request.getMessage());
+                                        fallbackReq.setSessionId(request.getSessionId());
+                                        fallbackReq.setImages(request.getImages());
+                                        fallbackReq.setHistory(request.getHistory());
+                                        fallbackReq.setTools(Collections.emptyList());
+
+                                        return adapterFactory.resolve(model.getProvider())
+                                                        .streamChat(fallbackReq, model, decryptedCredentials);
+                                });
         }
 
         @SuppressWarnings("unchecked")
