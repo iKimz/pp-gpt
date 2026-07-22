@@ -27,6 +27,8 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import jakarta.annotation.PreDestroy;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +40,36 @@ import java.util.concurrent.TimeoutException;
 public class AwsBedrockAdapter implements AiProviderAdapter {
 
     private final ObjectMapper objectMapper;
+    private final Map<String, BedrockRuntimeAsyncClient> clientCache = new ConcurrentHashMap<>();
+
+    @PreDestroy
+    public void destroy() {
+        clientCache.values().forEach(client -> {
+            try {
+                client.close();
+            } catch (Exception ignored) {}
+        });
+        clientCache.clear();
+    }
+
+    private BedrockRuntimeAsyncClient getOrCreateClient(String region, String endpointUrl, String apiKey) {
+        String cacheKey = region + "|" + (endpointUrl != null ? endpointUrl : "") + "|" + apiKey;
+        return clientCache.computeIfAbsent(cacheKey, key -> {
+            ClientOverrideConfiguration overrideConfig = ClientOverrideConfiguration.builder()
+                    .putHeader("Authorization", "Bearer " + apiKey)
+                    .build();
+
+            BedrockRuntimeAsyncClientBuilder builder = BedrockRuntimeAsyncClient.builder()
+                    .region(Region.of(region))
+                    .credentialsProvider(AnonymousCredentialsProvider.create())
+                    .overrideConfiguration(overrideConfig);
+
+            if (StringUtils.hasText(endpointUrl)) {
+                builder.endpointOverride(URI.create(endpointUrl));
+            }
+            return builder.build();
+        });
+    }
 
     @Override
     public String providerKey() {
@@ -59,20 +91,7 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
                     "Failed to serialize Bedrock request: " + e.getMessage()));
         }
 
-        ClientOverrideConfiguration overrideConfig = ClientOverrideConfiguration.builder()
-                .putHeader("Authorization", "Bearer " + apiKey)
-                .build();
-
-        BedrockRuntimeAsyncClientBuilder clientBuilder = BedrockRuntimeAsyncClient.builder()
-                .region(Region.of(region))
-                .credentialsProvider(AnonymousCredentialsProvider.create())
-                .overrideConfiguration(overrideConfig);
-
-        if (StringUtils.hasText(model.getEndpointUrl())) {
-            clientBuilder.endpointOverride(URI.create(model.getEndpointUrl()));
-        }
-
-        BedrockRuntimeAsyncClient asyncClient = clientBuilder.build();
+        BedrockRuntimeAsyncClient asyncClient = getOrCreateClient(region, model.getEndpointUrl(), apiKey);
 
         InvokeModelWithResponseStreamRequest invokeReq = InvokeModelWithResponseStreamRequest.builder()
                 .modelId(model.getModelName())
@@ -118,11 +137,7 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
                         if (err != null) {
                             sink.error(err);
                         }
-                        asyncClient.close();
                     });
-
-            sink.onCancel(asyncClient::close);
-            sink.onDispose(asyncClient::close);
         });
 
         // Apply timeout
