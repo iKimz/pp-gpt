@@ -136,43 +136,69 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
     }
 
     private Map<String, Object> buildRequestBody(ChatRequest request, Model model) {
+        String modelIdName = (model.getModelName() != null ? model.getModelName() : "").toLowerCase();
+        boolean isAnthropic = modelIdName.contains("anthropic") || modelIdName.contains("claude");
+
         List<Map<String, Object>> bedrockMessages = new ArrayList<>();
 
+        // System prompt for non-Anthropic models goes into messages
+        if (!isAnthropic && model.getSystemPrompt() != null && !model.getSystemPrompt().isBlank()) {
+            bedrockMessages.add(Map.of(
+                    "role", "system",
+                    "content", model.getSystemPrompt()));
+        }
+
+        // Process message history preserving tool fields
         if (request.getHistory() != null) {
             for (Map<String, Object> turn : request.getHistory()) {
                 String role = turn.get("role") != null ? turn.get("role").toString() : "user";
-                Object content = turn.get("content");
-                if (content == null) content = "";
+                Map<String, Object> msg = new LinkedHashMap<>();
+                msg.put("role", role);
 
-                bedrockMessages.add(Map.of(
-                        "role", role,
-                        "content", content));
+                if (turn.containsKey("content")) {
+                    msg.put("content", turn.get("content"));
+                }
+                if (turn.containsKey("tool_call_id")) {
+                    msg.put("tool_call_id", turn.get("tool_call_id"));
+                }
+                if (turn.containsKey("name")) {
+                    msg.put("name", turn.get("name"));
+                }
+                if (turn.containsKey("tool_calls")) {
+                    msg.put("tool_calls", turn.get("tool_calls"));
+                }
+                bedrockMessages.add(msg);
             }
         }
 
+        // Add user message / images
         if (request.getImages() != null && !request.getImages().isEmpty()) {
             List<Map<String, Object>> contentBlocks = new ArrayList<>();
             if (request.getMessage() != null && !request.getMessage().isBlank()) {
                 contentBlocks.add(Map.of("type", "text", "text", request.getMessage()));
             }
             for (String imgDataUrl : request.getImages()) {
-                String mediaType = "image/png";
-                String base64Data = imgDataUrl;
-                if (imgDataUrl.contains(";base64,")) {
-                    String[] parts = imgDataUrl.split(";base64,", 2);
-                    if (parts[0].startsWith("data:")) {
-                        mediaType = parts[0].substring(5);
+                if (isAnthropic) {
+                    String mediaType = "image/png";
+                    String base64Data = imgDataUrl;
+                    if (imgDataUrl.contains(";base64,")) {
+                        String[] parts = imgDataUrl.split(";base64,", 2);
+                        if (parts[0].startsWith("data:")) {
+                            mediaType = parts[0].substring(5);
+                        }
+                        base64Data = parts[1];
                     }
-                    base64Data = parts[1];
+                    contentBlocks.add(Map.of(
+                            "type", "image",
+                            "source", Map.of(
+                                    "type", "base64",
+                                    "media_type", mediaType,
+                                    "data", base64Data
+                            )
+                    ));
+                } else {
+                    contentBlocks.add(Map.of("type", "image_url", "image_url", Map.of("url", imgDataUrl)));
                 }
-                contentBlocks.add(Map.of(
-                        "type", "image",
-                        "source", Map.of(
-                                "type", "base64",
-                                "media_type", mediaType,
-                                "data", base64Data
-                        )
-                ));
             }
             bedrockMessages.add(Map.of(
                     "role", "user",
@@ -185,11 +211,14 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
 
         Map<String, Object> bodyMap = new LinkedHashMap<>();
 
-        // Base parameters for Bedrock / Anthropic / Custom Models
-        bodyMap.put("anthropic_version", "bedrock-2023-05-31");
-
-        if (model.getSystemPrompt() != null && !model.getSystemPrompt().isBlank()) {
-            bodyMap.put("system", model.getSystemPrompt());
+        if (isAnthropic) {
+            bodyMap.put("anthropic_version", "bedrock-2023-05-31");
+            if (model.getSystemPrompt() != null && !model.getSystemPrompt().isBlank()) {
+                bodyMap.put("system", model.getSystemPrompt());
+            }
+        } else {
+            bodyMap.put("model", model.getModelName());
+            bodyMap.put("stream", true);
         }
 
         bodyMap.put("messages", bedrockMessages);
@@ -198,9 +227,6 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
 
         // Convert and attach Tools if present
         if (request.getTools() != null && !request.getTools().isEmpty()) {
-            String modelIdName = (model.getModelName() != null ? model.getModelName() : "").toLowerCase();
-            boolean isAnthropic = modelIdName.contains("anthropic") || modelIdName.contains("claude");
-
             List<Map<String, Object>> toolsList = new ArrayList<>();
 
             for (ToolDto tool : request.getTools()) {
