@@ -520,7 +520,7 @@ public class ChatService {
                                                                                 pass2Req.setSessionId(
                                                                                                 request.getSessionId());
                                                                                 pass2Req.setImages(request.getImages());
-                                                                                pass2Req.setTools(request.getTools());
+                                                                                pass2Req.setTools(Collections.emptyList());
 
                                                                                 List<Map<String, Object>> history = new ArrayList<>();
                                                                                 if (request.getHistory() != null) {
