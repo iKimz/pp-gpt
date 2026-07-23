@@ -504,7 +504,7 @@ public class ChatService {
                                                         .flatMapMany(toolResults -> {
                                                                 ChatRequest pass2Req = new ChatRequest();
                                                                 pass2Req.setModelId(request.getModelId());
-                                                                pass2Req.setMessage(request.getMessage());
+                                                                pass2Req.setMessage(null);
                                                                 pass2Req.setSessionId(request.getSessionId());
                                                                 pass2Req.setImages(request.getImages());
                                                                 pass2Req.setTools(Collections.emptyList());
@@ -512,6 +512,9 @@ public class ChatService {
                                                                 List<Map<String, Object>> history = new ArrayList<>();
                                                                 if (request.getHistory() != null) {
                                                                         history.addAll(request.getHistory());
+                                                                }
+                                                                if (request.getMessage() != null && !request.getMessage().isBlank()) {
+                                                                        history.add(Map.of("role", "user", "content", request.getMessage()));
                                                                 }
                                                                 history.add(Map.of("role", "assistant", "content", "", "tool_calls", toolCalls));
                                                                 history.addAll(toolResults);
@@ -521,6 +524,7 @@ public class ChatService {
                                                                 log.info("[Agentic] Sending 2nd pass request to model with tool execution results...");
                                                                 return adapterFactory.resolve(model.getProvider())
                                                                                 .streamChat(pass2Req, model, decryptedCredentials)
+                                                                                .filter(fragment -> fragment == null || !fragment.contains("tool_calls"))
                                                                                 .defaultIfEmpty("[ขออภัยครับ ระบบไม่สามารถประมวลผลคำตอบจากเครื่องมือได้ในขณะนี้]");
                                                         });
                                 }
