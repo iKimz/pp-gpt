@@ -597,6 +597,13 @@
               >
                 🔢 ID & Limit Params
               </button>
+              <button
+                type="button"
+                @click="applySchemaPreset('REST_API')"
+                class="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-md transition-colors border border-emerald-200"
+              >
+                🌐 REST API (Method/Path)
+              </button>
             </div>
 
             <textarea
@@ -677,6 +684,8 @@ function applySchemaPreset(presetType) {
     manualForm.value.inputSchema = '{\n  "type": "object",\n  "properties": {\n    "input_query": {\n      "type": "string",\n      "description": "Target search query or string"\n    }\n  },\n  "required": ["input_query"]\n}'
   } else if (presetType === 'ID_LIMIT') {
     manualForm.value.inputSchema = '{\n  "type": "object",\n  "properties": {\n    "user_id": {\n      "type": "string",\n      "description": "Target user ID"\n    },\n    "limit": {\n      "type": "integer",\n      "description": "Maximum number of records"\n    }\n  },\n  "required": ["user_id"]\n}'
+  } else if (presetType === 'REST_API') {
+    manualForm.value.inputSchema = '{\n  "type": "object",\n  "properties": {\n    "method": {\n      "type": "string",\n      "description": "HTTP Method (GET, POST, PUT, DELETE)",\n      "default": "POST"\n    },\n    "path": {\n      "type": "string",\n      "description": "Relative endpoint path (e.g. /api/v1/charge)",\n      "default": "/api/v1/charge"\n    }\n  }\n}'
   }
 }
 
