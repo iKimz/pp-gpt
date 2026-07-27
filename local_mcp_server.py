@@ -321,6 +321,11 @@ class LocalMcpHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(response).encode('utf-8'))
             return
 
+        elif method == "notifications/initialized":
+            self._set_headers(200)
+            self.wfile.write(b"")
+            return
+
         elif method == "tools/list":
             response = {
                 "jsonrpc": "2.0",

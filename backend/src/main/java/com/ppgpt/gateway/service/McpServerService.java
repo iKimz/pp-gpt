@@ -524,7 +524,8 @@ public class McpServerService {
                 "method", "initialize",
                 "params", Map.of(
                         "protocolVersion", "2024-11-05",
-                        "clientInfo", Map.of("name", "PP-GPT Gateway", "version", "1.0.0")
+                        "clientInfo", Map.of("name", "PP-GPT Gateway", "version", "1.0.0"),
+                        "capabilities", Map.of()
                 ),
                 "id", 1
         );
@@ -540,13 +541,21 @@ public class McpServerService {
                         Map<String, Object> resp = parseJsonResponse(rawBody);
                         if (resp.containsKey("result")) {
                             Map<String, Object> result = (Map<String, Object>) resp.get("result");
-                            if (result != null && result.containsKey("capabilities")) {
+                            if (result != null) {
                                 Map<String, Object> caps = (Map<String, Object>) result.get("capabilities");
-                                server.setSupportsTools(caps == null || caps.containsKey("tools"));
-                                server.setSupportsResources(caps != null && caps.containsKey("resources"));
-                                server.setSupportsPrompts(caps != null && caps.containsKey("prompts"));
+                                if (caps != null) {
+                                    server.setSupportsTools(caps.containsKey("tools") || caps.isEmpty());
+                                    server.setSupportsResources(caps.containsKey("resources"));
+                                    server.setSupportsPrompts(caps.containsKey("prompts"));
+                                } else {
+                                    server.setSupportsTools(true);
+                                    server.setSupportsResources(false);
+                                    server.setSupportsPrompts(false);
+                                }
                                 server.setCapabilityStatus("DISCOVERED");
-                                return mcpServerRepository.save(server);
+
+                                return sendInitializedNotification(server)
+                                        .then(mcpServerRepository.save(server));
                             }
                         }
                     } catch (Exception e) {
@@ -557,10 +566,24 @@ public class McpServerService {
                     return mcpServerRepository.save(server);
                 })
                 .onErrorResume(e -> {
-                    log.info("[MCP Handshake] Server '{}' does not respond to 'initialize' (might be legacy REST or unsupported protocol).", server.getName());
+                    log.info("[MCP Handshake] Server '{}' does not respond to 'initialize' (falling back to NON_MCP_REST / Manual mode).", server.getName());
                     server.setCapabilityStatus("NON_MCP_REST");
                     return mcpServerRepository.save(server);
                 });
+    }
+
+    private Mono<Void> sendInitializedNotification(McpServer server) {
+        WebClient.RequestBodySpec spec = prepareRequestSpec(server);
+        Map<String, Object> notification = Map.of(
+                "jsonrpc", "2.0",
+                "method", "notifications/initialized"
+        );
+        return spec.bodyValue(notification)
+                .retrieve()
+                .toBodilessEntity()
+                .timeout(Duration.ofSeconds(2))
+                .onErrorResume(e -> Mono.empty())
+                .then();
     }
 
     private WebClient.RequestBodySpec prepareRequestSpec(McpServer server) {
