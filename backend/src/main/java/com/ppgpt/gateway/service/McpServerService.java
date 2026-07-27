@@ -577,6 +577,25 @@ public class McpServerService {
      * Synchronizes tools, resources, and prompts for an MCP Server with vulnerability protections:
      * - Handshake (`initialize`) to discover protocol capabilities.
      * - Fallback handling for servers without `tools/list` (NON_MCP_REST).
+     */
+    private Mono<Boolean> pingLegacyEndpoint(McpServer server) {
+        try {
+            WebClient.RequestBodySpec spec = prepareRequestSpec(server);
+            return spec.bodyValue(Map.of())
+                    .exchangeToMono(response -> Mono.just(true))
+                    .timeout(Duration.ofSeconds(3))
+                    .onErrorReturn(false);
+        } catch (Exception e) {
+            return Mono.just(false);
+        }
+    }
+
+    /**
+     * Synchronize tools from MCP Server via `tools/list` JSON-RPC method.
+     * Implements:
+     * - Auto-discovery & Upsert of tool schema into database.
+     * - Prompt injection guard on tool descriptions.
+     * - Name collision prevention via server namespacing prefix (server_name__tool_name).
      * - Retry threshold protection (failed_sync_count >= 3) for network flakes.
      */
     @SuppressWarnings("unchecked")
@@ -586,8 +605,25 @@ public class McpServerService {
                 .flatMap(this::initializeHandshake)
                 .flatMap(server -> {
                     if ("NON_MCP_REST".equals(server.getCapabilityStatus()) || Boolean.FALSE.equals(server.getSupportsTools())) {
-                        log.info("[MCP Sync] Server '{}' operates in NON_MCP_REST/Manual mode. Retaining current manual tools.", server.getName());
-                        return getDiscoveredTools(serverId).collectList();
+                        log.info("[MCP Sync] Server '{}' operates in NON_MCP_REST/Manual mode. Verifying endpoint reachability...", server.getName());
+                        return pingLegacyEndpoint(server)
+                                .flatMap(isReachable -> {
+                                    if (isReachable) {
+                                        return mcpToolRepository.findByMcpServerId(serverId)
+                                                .flatMap(tool -> {
+                                                    tool.setFailedSyncCount(0);
+                                                    tool.setAvailable(true);
+                                                    tool.setLastSyncedAt(LocalDateTime.now());
+                                                    tool.setNewEntity(false);
+                                                    return mcpToolRepository.save(tool);
+                                                })
+                                                .map(t -> toToolDto(t, server.getName(), false))
+                                                .collectList();
+                                    } else {
+                                        log.warn("[MCP Sync] NON_MCP_REST endpoint for server '{}' is unreachable.", server.getName());
+                                        return processSyncFailure(server);
+                                    }
+                                });
                     }
 
                     WebClient.RequestBodySpec spec = prepareRequestSpec(server);
