@@ -500,6 +500,16 @@ public class McpServerService {
 
                     applyAuthHeaders(spec, server);
 
+                    if (McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus())) {
+                        if (arguments != null && arguments.get("headers") instanceof Map<?, ?> customHeaders) {
+                            for (Map.Entry<?, ?> entry : customHeaders.entrySet()) {
+                                if (entry.getKey() != null && entry.getValue() != null) {
+                                    spec.header(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+                                }
+                            }
+                        }
+                    }
+
                     Object postBody = null;
                     if (McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus())) {
                         if (httpMethod != HttpMethod.GET) {

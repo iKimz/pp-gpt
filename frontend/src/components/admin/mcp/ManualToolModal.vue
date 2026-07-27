@@ -7,7 +7,7 @@
           <h3 class="text-sm font-bold text-[#1a1b22] font-heading flex items-center gap-2">
             <span>⚙️</span> Add Manual Tool / REST Endpoint
           </h3>
-          <p class="text-[11px] text-gray-500 mt-0.5">Define REST API endpoints for AI LLMs to call as function tools.</p>
+          <p class="text-[11px] text-gray-500 mt-0.5">Register REST API endpoints as AI function tools.</p>
         </div>
         <button @click="$emit('close')" class="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
       </div>
@@ -24,7 +24,7 @@
               : 'border-transparent text-gray-500 hover:text-gray-700'
           ]"
         >
-          <span>🌐</span> Visual REST Builder (ง่ายที่สุด)
+          <span>🌐</span> REST API Form
         </button>
         <button
           type="button"
@@ -44,20 +44,8 @@
       <form @submit.prevent="handleSubmit" class="p-6 space-y-4 text-xs max-h-[75vh] overflow-y-auto">
         <!-- Visual REST Builder Mode -->
         <template v-if="activeMode === 'REST_FORM'">
-          <div class="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5 text-blue-950">
-            <p class="font-bold flex items-center gap-1.5 text-xs">
-              <span>💡</span> ตัวอย่างการตั้งค่าสำหรับ POST Method
-            </p>
-            <p class="text-[11px] leading-relaxed text-blue-900">
-              สมมติคุณมี REST API ชื่อ <strong>POST /api/v1/payments</strong><br/>
-              - เลือก HTTP Method เป็น <strong>POST</strong><br/>
-              - กรอก Default Subpath เป็น <strong>/api/v1/payments</strong><br/>
-              - ระบบจะสร้าง Schema ให้ AI ส่ง HTTP Request เข้ามาที่ Endpoint นี้ให้อัตโนมัติ!
-            </p>
-          </div>
-
           <div>
-            <label class="block font-semibold text-gray-700 mb-1">Tool Identifier / Name *</label>
+            <label class="block font-semibold text-gray-700 mb-1">Tool Name *</label>
             <input
               v-model="form.toolName"
               type="text"
@@ -68,38 +56,39 @@
           </div>
 
           <div>
-            <label class="block font-semibold text-gray-700 mb-1">Tool Description for AI *</label>
+            <label class="block font-semibold text-gray-700 mb-1">Description for AI *</label>
             <textarea
               v-model="form.description"
               rows="2"
               required
-              placeholder="อธิบายหน้าที่ของ API นี้เพื่อให้ AI รู้ว่าต้องเรียกใช้งานเมื่อใด (เช่น ใช้ชำระเงินตามจำนวนและสกุลเงินที่กำหนด)"
+              placeholder="Describe what this API endpoint does so the AI model knows when to invoke it..."
               class="w-full px-3 py-2 bg-[#f8f7fa] border border-[#e8e7f1] rounded-xl focus:outline-none focus:border-[#ffd700] text-xs resize-none"
             ></textarea>
           </div>
 
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="block font-semibold text-gray-700 mb-1">HTTP Method *</label>
+          <div class="grid grid-cols-4 gap-3">
+            <div class="col-span-1">
+              <label class="block font-semibold text-gray-700 mb-1">Method *</label>
               <select
                 v-model="restForm.method"
                 @change="updateRestSchema"
                 class="w-full px-3 py-2 bg-[#f8f7fa] border border-[#e8e7f1] rounded-xl focus:outline-none focus:border-[#ffd700] text-xs font-bold text-[#1a1b22]"
               >
-                <option value="POST">POST (แนะนำสำหรับ Body Payload)</option>
-                <option value="GET">GET (คำขออ่านข้อมูล)</option>
-                <option value="PUT">PUT (อัปเดตข้อมูล)</option>
-                <option value="DELETE">DELETE (ลบข้อมูล)</option>
-                <option value="PATCH">PATCH (อัปเดตบางส่วน)</option>
+                <option value="POST">POST</option>
+                <option value="GET">GET</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+                <option value="PATCH">PATCH</option>
               </select>
             </div>
 
-            <div class="col-span-2">
+            <div class="col-span-3">
               <label class="block font-semibold text-gray-700 mb-1">Subpath Endpoint *</label>
               <input
                 v-model="restForm.path"
                 @input="updateRestSchema"
                 type="text"
+                required
                 placeholder="e.g. /api/v1/payments"
                 class="w-full px-3 py-2 bg-[#f8f7fa] border border-[#e8e7f1] rounded-xl focus:outline-none focus:border-[#ffd700] text-xs font-mono"
               />
@@ -108,16 +97,30 @@
 
           <div>
             <label class="block font-semibold text-gray-700 mb-1">
-              Sample Request JSON Body / Payload (Optional)
+              Sample Request JSON Body / Parameters (Optional)
             </label>
             <textarea
               v-model="restForm.samplePayload"
               @input="updateRestSchema"
               rows="3"
-              placeholder='{"amount": 100, "currency": "THB", "customer_id": "CUST_123"}'
+              placeholder='{"amount": 100, "currency": "THB"}'
               class="w-full px-3 py-2 bg-[#f8f7fa] border border-[#e8e7f1] rounded-xl focus:outline-none focus:border-[#ffd700] text-xs font-mono resize-none leading-relaxed"
             ></textarea>
-            <p class="text-[10px] text-gray-400 mt-1">ใส่ตัวอย่าง JSON Payload เพื่อให้ AI เข้าใจโครงสร้างฟิลด์ข้อมูลที่ต้องส่งไปกับ Body</p>
+            <p class="text-[10px] text-gray-400 mt-1">Provide sample JSON parameters to infer property types for the AI function schema.</p>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-gray-700 mb-1">
+              Custom HTTP Headers (JSON, Optional)
+            </label>
+            <textarea
+              v-model="restForm.customHeaders"
+              @input="updateRestSchema"
+              rows="2"
+              placeholder='{"X-Tenant-Id": "tenant_1", "X-Custom-Header": "value"}'
+              class="w-full px-3 py-2 bg-[#f8f7fa] border border-[#e8e7f1] rounded-xl focus:outline-none focus:border-[#ffd700] text-xs font-mono resize-none leading-relaxed"
+            ></textarea>
+            <p class="text-[10px] text-gray-400 mt-1">Specify additional HTTP headers to include when forwarding requests to the target server.</p>
           </div>
         </template>
 
@@ -135,10 +138,11 @@
           </div>
 
           <div>
-            <label class="block font-semibold text-gray-700 mb-1">Description</label>
+            <label class="block font-semibold text-gray-700 mb-1">Description *</label>
             <textarea
               v-model="form.description"
               rows="2"
+              required
               placeholder="Describe tool capability..."
               class="w-full px-3 py-2 bg-[#f8f7fa] border border-[#e8e7f1] rounded-xl focus:outline-none focus:border-[#ffd700] text-xs resize-none"
             ></textarea>
@@ -200,16 +204,18 @@ const form = reactive({
 const restForm = reactive({
   method: 'POST',
   path: '/api/v1/payments',
-  samplePayload: '{\n  "amount": 100,\n  "currency": "THB"\n}'
+  samplePayload: '{\n  "amount": 100,\n  "currency": "THB"\n}',
+  customHeaders: ''
 })
 
 watch(() => props.show, (val) => {
   if (val) {
     form.toolName = 'process_payment'
-    form.description = 'ส่งคำขอชำระเงินไปยัง REST API Endpoint ผ่าน POST request'
+    form.description = 'Executes a payment request to the REST API endpoint via POST'
     restForm.method = 'POST'
     restForm.path = '/api/v1/payments'
     restForm.samplePayload = '{\n  "amount": 100,\n  "currency": "THB"\n}'
+    restForm.customHeaders = ''
     updateRestSchema()
   }
 })
@@ -241,21 +247,36 @@ function updateRestSchema() {
     } catch (e) {}
   }
 
+  const generatedProperties = {
+    method: {
+      type: 'string',
+      description: 'HTTP Method for legacy endpoint',
+      default: restForm.method || 'POST'
+    },
+    path: {
+      type: 'string',
+      description: 'Subpath relative to server base URL',
+      default: restForm.path || '/api/v1/payments'
+    },
+    payload: payloadSchema
+  }
+
+  if (restForm.customHeaders && restForm.customHeaders.trim()) {
+    try {
+      const parsedHeaders = JSON.parse(restForm.customHeaders)
+      if (typeof parsedHeaders === 'object' && parsedHeaders !== null) {
+        generatedProperties.headers = {
+          type: 'object',
+          description: 'Custom HTTP Request Headers',
+          default: parsedHeaders
+        }
+      }
+    } catch (e) {}
+  }
+
   const generatedSchema = {
     type: 'object',
-    properties: {
-      method: {
-        type: 'string',
-        description: 'HTTP Method for legacy endpoint',
-        default: restForm.method || 'POST'
-      },
-      path: {
-        type: 'string',
-        description: 'Subpath relative to server base URL',
-        default: restForm.path || '/api/v1/payments'
-      },
-      payload: payloadSchema
-    },
+    properties: generatedProperties,
     required: ['method']
   }
 
