@@ -81,6 +81,12 @@ public class McpServerController {
         return mcpServerService.importOpenApiSpec(id, request);
     }
 
+    @DeleteMapping("/mcp-servers/{id}/tools/{toolId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public Mono<Void> deleteManualTool(@PathVariable String id, @PathVariable String toolId) {
+        return mcpServerService.deleteManualTool(id, toolId);
+    }
+
     @GetMapping("/mcp-servers/{id}/resources")
     public Flux<McpResource> getDiscoveredResources(@PathVariable String id) {
         return mcpServerService.getDiscoveredResources(id);

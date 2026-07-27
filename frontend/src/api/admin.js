@@ -40,6 +40,7 @@ export const adminApi = {
   syncAllMcpTools: () => apiClient.post('/api/v1/admin/mcp-servers/sync-all'),
   getDiscoveredMcpTools: (id) => apiClient.get(`/api/v1/admin/mcp-servers/${id}/tools`),
   createManualMcpTool: (id, data) => apiClient.post(`/api/v1/admin/mcp-servers/${id}/tools/manual`, data),
+  deleteManualMcpTool: (id, toolId) => apiClient.delete(`/api/v1/admin/mcp-servers/${id}/tools/${toolId}`),
   importOpenApiMcpSpec: (id, data) => apiClient.post(`/api/v1/admin/mcp-servers/${id}/tools/import-openapi`, data),
   getDiscoveredMcpResources: (id) => apiClient.get(`/api/v1/admin/mcp-servers/${id}/resources`),
   getDiscoveredMcpPrompts: (id) => apiClient.get(`/api/v1/admin/mcp-servers/${id}/prompts`),

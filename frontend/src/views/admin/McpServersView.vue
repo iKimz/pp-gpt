@@ -266,7 +266,13 @@
                                 : 'bg-red-50 text-red-600 border-red-200'
                             ]"
                           >
-                            {{ (tool.isAvailable ?? tool.available) ? '🟢 Available' : `⚠️ Retry ${tool.failedSyncCount}/3` }}
+                            {{
+                              (tool.isAvailable ?? tool.available)
+                                ? '🟢 Available'
+                                : (tool.failedSyncCount > 0 && tool.failedSyncCount < 3)
+                                  ? `⚠️ Retry ${tool.failedSyncCount}/3`
+                                  : '🔴 Unreachable'
+                            }}
                           </span>
                         </div>
                         <p class="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
@@ -279,9 +285,15 @@
                           >
                             <span>🔍 View JSON Schema</span>
                           </button>
-                          <span class="text-gray-400 text-[9px]" v-if="tool.lastSyncedAt">
-                            Synced: {{ new Date(tool.lastSyncedAt).toLocaleTimeString() }}
-                          </span>
+                          <div class="flex items-center gap-2">
+                            <button
+                              @click="removeManualTool(srv, tool)"
+                              class="text-red-500 hover:text-red-700 hover:underline font-medium flex items-center gap-0.5"
+                              title="Delete this tool definition"
+                            >
+                              <span>🗑️ Delete</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -739,6 +751,21 @@ async function saveManualTool() {
     error.value = e.response?.data?.message || 'Failed to create manual tool'
   } finally {
     savingManual.value = false
+  }
+}
+
+async function removeManualTool(server, tool) {
+  if (!confirm(`Are you sure you want to delete tool '${tool.toolName}' (${tool.namespacedName})?`)) return
+  error.value = null
+  try {
+    await adminApi.deleteManualMcpTool(server.id, tool.id)
+    successMsg.value = `Tool '${tool.toolName}' deleted successfully!`
+    loadToolCount(server.id)
+    if (serverTools.value[server.id]) {
+      serverTools.value[server.id] = serverTools.value[server.id].filter(t => t.id !== tool.id)
+    }
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to delete tool'
   }
 }
 

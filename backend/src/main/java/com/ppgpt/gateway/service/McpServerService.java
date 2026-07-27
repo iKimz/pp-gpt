@@ -890,6 +890,13 @@ public class McpServerService {
                 });
     }
 
+    public Mono<Void> deleteManualTool(String serverId, String toolId) {
+        return mcpToolRepository.findById(toolId)
+                .filter(tool -> tool.getMcpServerId().equals(serverId))
+                .flatMap(tool -> groupMcpToolAccessRepository.deleteByMcpToolId(toolId)
+                        .then(mcpToolRepository.delete(tool)));
+    }
+
     public Mono<List<McpToolDto>> importOpenApiSpec(String serverId, OpenApiImportRequest request) {
         return mcpServerRepository.findById(serverId)
                 .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
