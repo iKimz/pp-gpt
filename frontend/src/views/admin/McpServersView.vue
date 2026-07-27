@@ -464,10 +464,14 @@ async function syncServerTools(server) {
     const { data } = await adminApi.syncMcpServerTools(server.id)
     serverTools.value[server.id] = data
     toolCounts.value[server.id] = data.length
-    successMsg.value = `Successfully synced ${data.length} tool(s) for ${server.name}`
+    const msg = `Successfully synced ${data.length} tool(s) for ${server.name}`
+    successMsg.value = msg
+    toast.success(msg)
     expandedServerId.value = server.id
   } catch (e) {
-    error.value = e.response?.data?.message || `Failed to sync tools for ${server.name}`
+    const errMsg = e.response?.data?.message || `Failed to sync tools for ${server.name}`
+    error.value = errMsg
+    toast.error(errMsg)
   } finally {
     syncingId.value = null
   }
@@ -478,10 +482,14 @@ async function syncAllTools() {
   error.value = null
   try {
     await adminApi.syncAllMcpTools()
-    successMsg.value = 'All active MCP server tools synced successfully'
+    const msg = 'All active MCP server tools synced successfully'
+    successMsg.value = msg
+    toast.success(msg)
     fetchServers()
   } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to sync all MCP tools'
+    const errMsg = e.response?.data?.message || 'Failed to sync all MCP tools'
+    error.value = errMsg
+    toast.error(errMsg)
   } finally {
     syncingAll.value = false
   }
@@ -516,33 +524,46 @@ async function saveServer(formData) {
   try {
     if (editingServer.value?.id) {
       await apiClient.put(`/api/v1/admin/mcp-servers/${editingServer.value.id}`, formData)
+      toast.success(`MCP Server '${formData.name}' updated successfully!`)
     } else {
       await apiClient.post('/api/v1/admin/mcp-servers', formData)
+      toast.success(`MCP Server '${formData.name}' created successfully!`)
     }
     closeModal()
     fetchServers()
   } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to save MCP server'
+    const errMsg = e.response?.data?.message || 'Failed to save MCP server'
+    error.value = errMsg
+    toast.error(errMsg)
   } finally {
     saving.value = false
   }
 }
 
-function confirmDelete(server) {
-  deletingServer.value = server
+async function confirmDelete(server) {
+  const isConfirmed = await confirm({
+    title: 'Delete MCP Server',
+    message: `Are you sure you want to delete MCP Server "${server.name}"? All associated tools and permissions will be removed.`,
+    confirmText: 'Delete Server',
+    type: 'danger'
+  })
+  if (!isConfirmed) return
+
+  try {
+    await apiClient.delete(`/api/v1/admin/mcp-servers/${server.id}`)
+    toast.success(`Deleted MCP Server "${server.name}" and all associated tools`)
+    fetchServers()
+  } catch (e) {
+    const errMsg = e.response?.data?.message || 'Failed to delete MCP server'
+    error.value = errMsg
+    toast.error(errMsg)
+  }
 }
 
 async function executeDelete() {
   if (!deletingServer.value) return
-  const srv = deletingServer.value
+  await confirmDelete(deletingServer.value)
   deletingServer.value = null
-  try {
-    await apiClient.delete(`/api/v1/admin/mcp-servers/${srv.id}`)
-    successMsg.value = `Deleted MCP Server "${srv.name}" and all associated tools`
-    fetchServers()
-  } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to delete MCP server'
-  }
 }
 
 async function testServer(server) {
@@ -554,12 +575,19 @@ async function testServer(server) {
       serverId: server.id,
       ...data
     }
+    if (data.status === 'CONNECTED') {
+      toast.success(`Server '${server.name}' connected successfully!`)
+    } else {
+      toast.warning(`Server '${server.name}' status: ${data.status}`)
+    }
   } catch (e) {
+    const errMsg = e.response?.data?.message || e.message
     testResult.value = {
       serverId: server.id,
       status: 'DISCONNECTED',
-      error: e.response?.data?.message || e.message
+      error: errMsg
     }
+    toast.error(`Connection failed for '${server.name}': ${errMsg}`)
   } finally {
     testingId.value = null
   }
@@ -576,14 +604,18 @@ async function saveManualTool(formData) {
   error.value = null
   try {
     const { data } = await adminApi.createManualMcpTool(currentManualServer.value.id, formData)
-    successMsg.value = `Manual tool '${data.toolName}' created successfully!`
+    const msg = `Manual tool '${data.toolName}' created successfully!`
+    successMsg.value = msg
+    toast.success(msg)
     showManualModal.value = false
     loadToolCount(currentManualServer.value.id)
     if (expandedServerId.value === currentManualServer.value.id) {
       toggleToolsDrawer(currentManualServer.value)
     }
   } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to create manual tool'
+    const errMsg = e.response?.data?.message || 'Failed to create manual tool'
+    error.value = errMsg
+    toast.error(errMsg)
   } finally {
     savingManual.value = false
   }
