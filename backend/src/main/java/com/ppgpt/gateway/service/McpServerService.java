@@ -510,11 +510,13 @@ public class McpServerService {
 
                     if (McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus())) {
                         if (arguments != null && arguments.get("headers") instanceof Map<?, ?> customHeaders) {
-                            for (Map.Entry<?, ?> entry : customHeaders.entrySet()) {
-                                if (entry.getKey() != null && entry.getValue() != null) {
-                                    spec.header(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+                            spec.headers(httpHeaders -> {
+                                for (Map.Entry<?, ?> entry : customHeaders.entrySet()) {
+                                    if (entry.getKey() != null && entry.getValue() != null) {
+                                        httpHeaders.set(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+                                    }
                                 }
-                            }
+                            });
                         }
                     }
 
@@ -569,10 +571,10 @@ public class McpServerService {
     private void applyAuthHeaders(WebClient.RequestBodySpec spec, McpServer server) {
         if (McpConstants.AUTH_STATIC_KEY.equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
             String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
-            spec.header(McpConstants.HEADER_AUTHORIZATION, McpConstants.HEADER_BEARER_PREFIX + rawKey);
+            spec.headers(h -> h.set(McpConstants.HEADER_AUTHORIZATION, McpConstants.HEADER_BEARER_PREFIX + rawKey));
         } else if (McpConstants.AUTH_OAUTH2.equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
             String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
-            spec.header(McpConstants.HEADER_AUTHORIZATION, McpConstants.HEADER_BEARER_PREFIX + rawToken);
+            spec.headers(h -> h.set(McpConstants.HEADER_AUTHORIZATION, McpConstants.HEADER_BEARER_PREFIX + rawToken));
         }
     }
 
@@ -1121,7 +1123,9 @@ public class McpServerService {
                             .header("Accept", "application/json, text/event-stream, text/plain, */*");
 
                     applyAuthHeaders(spec, server);
-                    customHeaders.forEach(spec::header);
+                    if (!customHeaders.isEmpty()) {
+                        spec.headers(h -> customHeaders.forEach(h::set));
+                    }
 
                     WebClient.RequestHeadersSpec<?> headersSpec = (postBody != null && httpMethod != HttpMethod.GET) ? spec.bodyValue(postBody) : spec;
 
