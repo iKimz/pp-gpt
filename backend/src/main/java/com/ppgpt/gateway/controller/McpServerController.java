@@ -142,6 +142,19 @@ public class McpServerController {
     }
 
     /**
+     * Updates an existing manual tool definition.
+     *
+     * @param id      Server ID
+     * @param toolId  Tool ID
+     * @param request Update request payload
+     * @return Mono emitting updated tool DTO
+     */
+    @PutMapping("/mcp-servers/{id}/tools/{toolId}")
+    public Mono<McpToolDto> updateManualTool(@PathVariable String id, @PathVariable String toolId, @Valid @RequestBody CreateManualToolRequest request) {
+        return mcpServerService.updateManualTool(id, toolId, request);
+    }
+
+    /**
      * Imports an OpenAPI specification as namespaced tools.
      *
      * @param id      Server ID

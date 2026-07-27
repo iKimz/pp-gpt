@@ -871,8 +871,11 @@ public class McpServerService {
      */
     public Flux<McpToolDto> getDiscoveredTools(String serverId) {
         return mcpServerRepository.findById(serverId)
-                .flatMapMany(server -> mcpToolRepository.findByMcpServerId(serverId)
-                        .map(t -> toToolDto(t, server.getName(), false)));
+                .flatMapMany(server -> {
+                    boolean isManual = McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus());
+                    return mcpToolRepository.findByMcpServerId(serverId)
+                            .map(t -> toToolDto(t, server.getName(), false, isManual));
+                });
     }
 
     /**
@@ -883,16 +886,18 @@ public class McpServerService {
      */
     public Flux<McpToolDto> getGroupToolAccess(String groupId) {
         return mcpServerRepository.findByIsActiveTrue()
-                .collectMap(McpServer::getId, McpServer::getName)
+                .collectMap(McpServer::getId, s -> s)
                 .flatMapMany(serverMap -> 
                     groupMcpToolAccessRepository.findByGroupId(groupId)
                         .collectMap(GroupMcpToolAccess::getMcpToolId, GroupMcpToolAccess::isEnabled)
                         .flatMapMany(enabledMap -> 
                             mcpToolRepository.findAll()
                                 .map(t -> {
-                                    String srvName = serverMap.getOrDefault(t.getMcpServerId(), "Unknown Server");
+                                    McpServer srv = serverMap.get(t.getMcpServerId());
+                                    String srvName = srv != null ? srv.getName() : "Unknown Server";
+                                    boolean isManual = srv != null && McpConstants.CAPABILITY_NON_MCP_REST.equals(srv.getCapabilityStatus());
                                     boolean enabled = enabledMap.getOrDefault(t.getId(), true);
-                                    return toToolDto(t, srvName, enabled);
+                                    return toToolDto(t, srvName, enabled, isManual);
                                 })
                         )
                 );
@@ -979,6 +984,36 @@ public class McpServerService {
                                         .map(tool -> toToolDto(tool, savedServer.getName(), true));
                             });
                 });
+    }
+
+    /**
+     * Updates an existing manual tool definition.
+     *
+     * @param serverId Server ID
+     * @param toolId   Tool ID
+     * @param request  Updated tool payload
+     * @return Mono emitting updated tool DTO
+     */
+    public Mono<McpToolDto> updateManualTool(String serverId, String toolId, CreateManualToolRequest request) {
+        return mcpServerRepository.findById(serverId)
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
+                .flatMap(server -> mcpToolRepository.findById(toolId)
+                        .filter(tool -> tool.getMcpServerId().equals(serverId))
+                        .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Tool not found")))
+                        .flatMap(tool -> {
+                            String cleanName = request.getToolName().trim().replaceAll("[^a-zA-Z0-9_]", "_");
+                            String namespaced = computeNamespacedName(server.getName(), cleanName);
+
+                            tool.setToolName(cleanName);
+                            tool.setNamespacedName(namespaced);
+                            tool.setDescription(request.getDescription());
+                            tool.setInputSchema(request.getInputSchema());
+                            tool.setNewEntity(false);
+
+                            boolean isManual = McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus());
+                            return mcpToolRepository.save(tool)
+                                    .map(saved -> toToolDto(saved, server.getName(), true, isManual));
+                        }));
     }
 
     /**
@@ -1085,6 +1120,10 @@ public class McpServerService {
     }
 
     private McpToolDto toToolDto(McpTool tool, String serverName, boolean isEnabled) {
+        return toToolDto(tool, serverName, isEnabled, false);
+    }
+
+    private McpToolDto toToolDto(McpTool tool, String serverName, boolean isEnabled, boolean isManual) {
         return McpToolDto.builder()
                 .id(tool.getId())
                 .mcpServerId(tool.getMcpServerId())
@@ -1094,6 +1133,7 @@ public class McpServerService {
                 .description(tool.getDescription())
                 .inputSchema(tool.getInputSchema())
                 .isAvailable(tool.isAvailable())
+                .isManual(isManual)
                 .failedSyncCount(tool.getFailedSyncCount())
                 .isEnabledForGroup(isEnabled)
                 .lastSyncedAt(tool.getLastSyncedAt())

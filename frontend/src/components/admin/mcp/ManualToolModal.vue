@@ -5,9 +5,9 @@
       <div class="px-6 py-4 border-b border-[#e8e7f1] flex items-center justify-between bg-[#fcfbfe]">
         <div>
           <h3 class="text-sm font-bold text-[#1a1b22] font-heading flex items-center gap-2">
-            <span>⚙️</span> Add Manual Tool / REST Endpoint
+            <span>{{ editingTool ? '✏️' : '⚙️' }}</span> {{ editingTool ? 'Edit Manual Tool' : 'Add Manual Tool / REST Endpoint' }}
           </h3>
-          <p class="text-[11px] text-gray-500 mt-0.5">Register REST API endpoints as AI function tools.</p>
+          <p class="text-[11px] text-gray-500 mt-0.5">Register or update REST API endpoints as AI function tools.</p>
         </div>
         <button @click="$emit('close')" class="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
       </div>
@@ -183,7 +183,7 @@
             class="px-5 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] font-semibold rounded-xl text-xs shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5"
           >
             <span v-if="submitting" class="animate-spin text-sm">⏳</span>
-            Create Manual Tool
+            {{ editingTool ? 'Save Changes' : 'Create Manual Tool' }}
           </button>
         </div>
       </form>
@@ -197,6 +197,7 @@ import { ref, reactive, watch } from 'vue'
 const props = defineProps({
   show: Boolean,
   server: Object,
+  editingTool: Object,
   submitting: Boolean
 })
 
@@ -219,13 +220,28 @@ const restForm = reactive({
 
 watch(() => props.show, (val) => {
   if (val) {
-    form.toolName = 'process_payment'
-    form.description = 'Executes a payment request to the REST API endpoint via POST'
-    restForm.method = 'POST'
-    restForm.path = '/api/v1/payments'
-    restForm.samplePayload = '{\n  "amount": 100,\n  "currency": "THB"\n}'
-    restForm.customHeaders = '{\n  "X-Tenant-Id": "tenant_001"\n}'
-    updateRestSchema()
+    if (props.editingTool) {
+      form.toolName = props.editingTool.toolName || ''
+      form.description = props.editingTool.description || ''
+      form.inputSchema = props.editingTool.inputSchema || ''
+      try {
+        const schemaObj = JSON.parse(props.editingTool.inputSchema || '{}')
+        const propsObj = schemaObj.properties || {}
+        if (propsObj.method) restForm.method = propsObj.method.default || 'POST'
+        if (propsObj.path) restForm.path = propsObj.path.default || '/api/v1/endpoint'
+        if (propsObj.headers && propsObj.headers.default) {
+          restForm.customHeaders = JSON.stringify(propsObj.headers.default, null, 2)
+        }
+      } catch (e) {}
+    } else {
+      form.toolName = 'process_payment'
+      form.description = 'Executes a payment request to the REST API endpoint via POST'
+      restForm.method = 'POST'
+      restForm.path = '/api/v1/payments'
+      restForm.samplePayload = '{\n  "amount": 100,\n  "currency": "THB"\n}'
+      restForm.customHeaders = '{\n  "X-Tenant-Id": "tenant_001"\n}'
+      updateRestSchema()
+    }
   }
 })
 

@@ -253,11 +253,19 @@
                           </button>
                           <button
                             v-if="tool.isManual"
-                            @click="removeManualTool(srv, tool)"
-                            title="Delete Manual Tool"
-                            class="p-1 text-red-500 hover:bg-red-50 rounded-md"
+                            @click="openEditManualToolModal(srv, tool)"
+                            title="Edit Tool"
+                            class="px-2 py-1 text-[10px] bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-md font-semibold flex items-center gap-1 transition-colors"
                           >
-                            🗑️
+                            ✏️ Edit
+                          </button>
+                          <button
+                            v-if="tool.isManual"
+                            @click="removeManualTool(srv, tool)"
+                            title="Delete Tool"
+                            class="px-2 py-1 text-[10px] bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md font-semibold flex items-center gap-1 transition-colors"
+                          >
+                            🗑️ Delete
                           </button>
                         </div>
                       </div>
@@ -283,8 +291,9 @@
     <ManualToolModal
       :show="showManualModal"
       :server="currentManualServer"
+      :editing-tool="editingManualTool"
       :submitting="savingManual"
-      @close="showManualModal = false"
+      @close="showManualModal = false; editingManualTool = null"
       @save="saveManualTool"
     />
 
@@ -409,6 +418,7 @@ const editingServer = ref(null)
 
 const showManualModal = ref(false)
 const currentManualServer = ref(null)
+const editingManualTool = ref(null)
 const savingManual = ref(false)
 
 const showOpenApiModal = ref(false)
@@ -595,6 +605,13 @@ async function testServer(server) {
 
 function openManualToolModal(server) {
   currentManualServer.value = server
+  editingManualTool.value = null
+  showManualModal.value = true
+}
+
+function openEditManualToolModal(server, tool) {
+  currentManualServer.value = server
+  editingManualTool.value = tool
   showManualModal.value = true
 }
 
@@ -603,17 +620,27 @@ async function saveManualTool(formData) {
   savingManual.value = true
   error.value = null
   try {
-    const { data } = await adminApi.createManualMcpTool(currentManualServer.value.id, formData)
-    const msg = `Manual tool '${data.toolName}' created successfully!`
-    successMsg.value = msg
-    toast.success(msg)
+    let data
+    if (editingManualTool.value?.id) {
+      const res = await adminApi.updateManualMcpTool(currentManualServer.value.id, editingManualTool.value.id, formData)
+      data = res.data
+      const msg = `Manual tool '${data.toolName}' updated successfully!`
+      toast.success(msg)
+    } else {
+      const res = await adminApi.createManualMcpTool(currentManualServer.value.id, formData)
+      data = res.data
+      const msg = `Manual tool '${data.toolName}' created successfully!`
+      toast.success(msg)
+    }
     showManualModal.value = false
+    editingManualTool.value = null
     loadToolCount(currentManualServer.value.id)
     if (expandedServerId.value === currentManualServer.value.id) {
-      toggleToolsDrawer(currentManualServer.value)
+      const { data: updatedTools } = await adminApi.getDiscoveredMcpTools(currentManualServer.value.id)
+      serverTools.value[currentManualServer.value.id] = updatedTools
     }
   } catch (e) {
-    const errMsg = e.response?.data?.message || 'Failed to create manual tool'
+    const errMsg = e.response?.data?.message || 'Failed to save manual tool'
     error.value = errMsg
     toast.error(errMsg)
   } finally {

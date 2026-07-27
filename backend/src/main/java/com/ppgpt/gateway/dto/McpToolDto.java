@@ -29,6 +29,9 @@ public class McpToolDto {
     @JsonProperty("isEnabledForGroup")
     private boolean isEnabledForGroup;
 
+    @JsonProperty("isManual")
+    private boolean isManual;
+
     private LocalDateTime lastSyncedAt;
     private LocalDateTime createdAt;
 }
