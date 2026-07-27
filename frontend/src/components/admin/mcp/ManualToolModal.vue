@@ -168,23 +168,55 @@
           </div>
         </template>
 
+        <!-- Test Result Box -->
+        <div v-if="testResult" class="p-3.5 rounded-xl border text-xs space-y-2" :class="testResult.status === 'SUCCESS' ? 'bg-emerald-50/90 border-emerald-200 text-emerald-950' : 'bg-rose-50/90 border-rose-200 text-rose-950'">
+          <div class="flex items-center justify-between font-bold">
+            <div class="flex items-center gap-2 overflow-hidden">
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono text-white shrink-0" :class="testResult.status === 'SUCCESS' ? 'bg-emerald-600' : 'bg-rose-600'">
+                {{ testResult.statusCode }} {{ testResult.status }}
+              </span>
+              <span class="font-mono text-[11px] truncate">{{ testResult.method }} {{ testResult.targetUrl }}</span>
+            </div>
+            <span class="text-[10px] font-mono text-gray-500 shrink-0">{{ testResult.durationMs }} ms</span>
+          </div>
+          <div v-if="testResult.responseBody" class="bg-[#1a1b26] text-gray-200 p-2.5 rounded-lg font-mono text-[11px] max-h-36 overflow-y-auto whitespace-pre-wrap break-all border border-[#2e3047]">
+            {{ formatJsonStr(testResult.responseBody) }}
+          </div>
+          <div v-else-if="testResult.error" class="text-rose-700 font-mono text-[11px]">
+            {{ testResult.error }}
+          </div>
+        </div>
+
         <!-- Footer -->
-        <div class="pt-4 border-t border-[#e8e7f1] flex items-center justify-end gap-3">
+        <div class="pt-4 border-t border-[#e8e7f1] flex items-center justify-between gap-3">
           <button
             type="button"
-            @click="$emit('close')"
-            class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-xs transition-all"
+            @click="handleTestEndpoint"
+            :disabled="testing || !server?.id"
+            class="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 font-semibold rounded-xl text-xs transition-all flex items-center gap-1.5 disabled:opacity-50"
+            title="Test HTTP request to target REST endpoint"
           >
-            Cancel
+            <span v-if="testing" class="animate-spin text-sm">⏳</span>
+            <span>⚡</span> {{ testing ? 'Testing Endpoint...' : 'Test Endpoint' }}
           </button>
-          <button
-            type="submit"
-            :disabled="submitting"
-            class="px-5 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] font-semibold rounded-xl text-xs shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5"
-          >
-            <span v-if="submitting" class="animate-spin text-sm">⏳</span>
-            {{ editingTool ? 'Save Changes' : 'Create Manual Tool' }}
-          </button>
+
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              @click="$emit('close')"
+              class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-xs transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              :disabled="submitting"
+              class="px-5 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] font-semibold rounded-xl text-xs shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <span v-if="submitting" class="animate-spin text-sm">⏳</span>
+              {{ editingTool ? 'Save Changes' : 'Create Manual Tool' }}
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -193,6 +225,10 @@
 
 <script setup>
 import { ref, reactive, watch } from 'vue'
+import { adminApi } from '@/api/admin'
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
 
 const props = defineProps({
   show: Boolean,
@@ -204,6 +240,8 @@ const props = defineProps({
 const emit = defineEmits(['close', 'save'])
 
 const activeMode = ref('REST_FORM')
+const testing = ref(false)
+const testResult = ref(null)
 
 const form = reactive({
   toolName: '',
@@ -310,5 +348,48 @@ function updateRestSchema() {
 
 function handleSubmit() {
   emit('save', { ...form })
+}
+
+async function handleTestEndpoint() {
+  if (!props.server?.id) {
+    toast.error('Server context is missing')
+    return
+  }
+  if (activeMode.value === 'REST_FORM') {
+    updateRestSchema()
+  }
+  testing.value = true
+  testResult.value = null
+  try {
+    const res = await adminApi.testManualMcpTool(props.server.id, form)
+    testResult.value = res.data
+    if (res.data.status === 'SUCCESS') {
+      toast.success(`Endpoint tested successfully! (${res.data.statusCode} in ${res.data.durationMs}ms)`)
+    } else {
+      toast.error(`Endpoint test returned ${res.data.statusCode} ${res.data.status}`)
+    }
+  } catch (e) {
+    const errMsg = e.response?.data?.message || e.message
+    testResult.value = {
+      status: 'FAILED',
+      statusCode: 500,
+      targetUrl: props.server.endpointUrl,
+      method: restForm.method || 'POST',
+      durationMs: 0,
+      error: errMsg
+    }
+    toast.error(`Test failed: ${errMsg}`)
+  } finally {
+    testing.value = false
+  }
+}
+
+function formatJsonStr(str) {
+  if (!str) return ''
+  try {
+    return JSON.stringify(JSON.parse(str), null, 2)
+  } catch (e) {
+    return str
+  }
 }
 </script>

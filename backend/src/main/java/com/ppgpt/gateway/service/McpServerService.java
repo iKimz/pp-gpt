@@ -22,6 +22,7 @@ import com.ppgpt.gateway.repository.McpToolRepository;
 import com.ppgpt.gateway.util.JsonUtil;
 import com.ppgpt.gateway.util.McpConstants;
 import com.ppgpt.gateway.util.SecuritySanitizerUtil;
+import java.util.HashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
@@ -1028,6 +1029,114 @@ public class McpServerService {
                 .filter(tool -> tool.getMcpServerId().equals(serverId))
                 .flatMap(tool -> groupMcpToolAccessRepository.deleteByMcpToolId(toolId)
                         .then(mcpToolRepository.delete(tool)));
+    }
+
+    /**
+     * Executes a test invocation for a manual REST tool against the target MCP server.
+     *
+     * @param serverId Server ID
+     * @param request  Test request payload containing toolName, description, inputSchema
+     * @return Mono emitting Map of test results (status, statusCode, targetUrl, method, durationMs, responseBody)
+     */
+    public Mono<Map<String, Object>> testManualTool(String serverId, CreateManualToolRequest request) {
+        long startTime = System.currentTimeMillis();
+
+        return mcpServerRepository.findById(serverId)
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
+                .flatMap(server -> {
+                    String targetUrl = server.getEndpointUrl();
+                    HttpMethod httpMethod = HttpMethod.POST;
+                    Map<String, String> customHeaders = new HashMap<>();
+                    Object postBody = null;
+
+                    if (request.getInputSchema() != null && !request.getInputSchema().isBlank()) {
+                        try {
+                            JsonNode schemaNode = objectMapper.readTree(request.getInputSchema());
+                            JsonNode properties = schemaNode.get("properties");
+                            if (properties != null && properties.isObject()) {
+                                if (properties.has("method") && properties.get("method").has("default")) {
+                                    String methodStr = properties.get("method").get("default").asText("POST");
+                                    try {
+                                        httpMethod = HttpMethod.valueOf(methodStr.toUpperCase());
+                                    } catch (Exception ignored) {}
+                                }
+
+                                if (properties.has("path") && properties.get("path").has("default")) {
+                                    String subPath = properties.get("path").get("default").asText("");
+                                    if (subPath != null && subPath.startsWith("/")) {
+                                        targetUrl = targetUrl.replaceAll("/+$", "") + subPath;
+                                    }
+                                }
+
+                                if (properties.has("headers") && properties.get("headers").has("default")) {
+                                    JsonNode headersNode = properties.get("headers").get("default");
+                                    if (headersNode != null && headersNode.isObject()) {
+                                        headersNode.fieldNames().forEachRemaining(key -> {
+                                            customHeaders.put(key, headersNode.get(key).asText());
+                                        });
+                                    }
+                                }
+
+                                if (properties.has("payload") && properties.get("payload").has("properties")) {
+                                    Map<String, Object> sampleParams = new HashMap<>();
+                                    JsonNode payloadProps = properties.get("payload").get("properties");
+                                    payloadProps.fieldNames().forEachRemaining(key -> {
+                                        JsonNode field = payloadProps.get(key);
+                                        if (field.has("default")) {
+                                            sampleParams.put(key, field.get("default").asText());
+                                        } else {
+                                            sampleParams.put(key, "sample_value");
+                                        }
+                                    });
+                                    postBody = sampleParams;
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.warn("[Manual Tool Test] Failed to parse inputSchema for testing: {}", e.getMessage());
+                        }
+                    }
+
+                    WebClient.RequestBodySpec spec = aiWebClient.method(httpMethod)
+                            .uri(targetUrl)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("Accept", "application/json, text/event-stream, text/plain, */*");
+
+                    applyAuthHeaders(spec, server);
+                    customHeaders.forEach(spec::header);
+
+                    WebClient.RequestHeadersSpec<?> headersSpec = (postBody != null && httpMethod != HttpMethod.GET) ? spec.bodyValue(postBody) : spec;
+
+                    String finalTargetUrl = targetUrl;
+                    String finalMethod = httpMethod.name();
+
+                    return headersSpec.exchangeToMono(response -> {
+                        long duration = System.currentTimeMillis() - startTime;
+                        int statusCode = response.statusCode().value();
+
+                        return response.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .map(bodyStr -> {
+                                    Map<String, Object> result = new HashMap<>();
+                                    result.put("status", statusCode >= 200 && statusCode < 300 ? "SUCCESS" : "ERROR");
+                                    result.put("statusCode", statusCode);
+                                    result.put("targetUrl", finalTargetUrl);
+                                    result.put("method", finalMethod);
+                                    result.put("durationMs", duration);
+                                    result.put("responseBody", bodyStr);
+                                    return result;
+                                });
+                    }).onErrorResume(e -> {
+                        long duration = System.currentTimeMillis() - startTime;
+                        Map<String, Object> errorResult = new HashMap<>();
+                        errorResult.put("status", "FAILED");
+                        errorResult.put("statusCode", 500);
+                        errorResult.put("targetUrl", finalTargetUrl);
+                        errorResult.put("method", finalMethod);
+                        errorResult.put("durationMs", duration);
+                        errorResult.put("error", e.getMessage() != null ? e.getMessage() : e.toString());
+                        return Mono.just(errorResult);
+                    });
+                });
     }
 
     /**

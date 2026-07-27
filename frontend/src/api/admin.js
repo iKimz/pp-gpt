@@ -73,6 +73,9 @@ export const adminApi = {
   /** Updates a manual REST tool definition */
   updateManualMcpTool: (id, toolId, data) => apiClient.put(`/api/v1/admin/mcp-servers/${id}/tools/${toolId}`, data),
 
+  /** Tests a manual REST tool configuration */
+  testManualMcpTool: (id, data) => apiClient.post(`/api/v1/admin/mcp-servers/${id}/tools/test-manual`, data),
+
   /** Deletes a manual REST tool definition */
   deleteManualMcpTool: (id, toolId) => apiClient.delete(`/api/v1/admin/mcp-servers/${id}/tools/${toolId}`),
 

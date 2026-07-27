@@ -155,6 +155,18 @@ public class McpServerController {
     }
 
     /**
+     * Tests invocation of a manual tool configuration against target REST server.
+     *
+     * @param id      Server ID
+     * @param request Test request payload containing tool definition
+     * @return Mono emitting test results map
+     */
+    @PostMapping("/mcp-servers/{id}/tools/test-manual")
+    public Mono<Map<String, Object>> testManualTool(@PathVariable String id, @Valid @RequestBody CreateManualToolRequest request) {
+        return mcpServerService.testManualTool(id, request);
+    }
+
+    /**
      * Imports an OpenAPI specification as namespaced tools.
      *
      * @param id      Server ID
