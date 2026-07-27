@@ -212,7 +212,8 @@ The gateway implements a comprehensive, enterprise-grade Model Context Protocol 
 
 2. **Legacy REST & Manual Tool Fallback**:
    - Detects non-MCP REST endpoints and marks them as `⚠️ Legacy REST / Manual`.
-   - **➕ Manual Tool Creator**: Allows administrators to define custom JSON Input Schemas with pre-built quick presets (Empty, String Query, ID + Limit) and real-time JSON validation.
+   - **➕ Manual Tool Creator**: Allows administrators to define custom JSON Input Schemas with pre-built UI quick presets (`⚡ No Parameters`, `📝 Single Text`, `🔢 ID & Limit`, `🌐 REST API Method/Path`) and real-time JSON syntax validation.
+   - **Dynamic HTTP Execution**: Supports dynamic HTTP methods (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`) and custom relative endpoint paths (`/api/v1/charge`) for standard `@RestController` endpoints.
    - **📄 OpenAPI 3.0 Spec Importer**: Automatically parses raw JSON/YAML OpenAPI specifications, extracting paths, parameters, and request bodies into namespaced LLM tools.
    - **HTTP Endpoint Reachability Ping**: Regularly verifies legacy endpoint health, updating availability badges (`🟢 Available` vs `🔴 Unreachable`) while retaining manual tool definitions.
 
