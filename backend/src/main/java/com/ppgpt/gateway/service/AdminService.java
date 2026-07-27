@@ -405,7 +405,7 @@ public class AdminService {
                 .offset((long) page * size);
 
         return entityTemplate.select(query, ChatLog.class)
-                .flatMap(log -> userRepository.findById(log.getUserId())
+                .concatMap(log -> userRepository.findById(log.getUserId())
                         .map(User::getUsername)
                         .defaultIfEmpty("Unknown User")
                         .map(uname -> {
@@ -434,6 +434,12 @@ public class AdminService {
                 .collectList()
                 .flatMap(list -> entityTemplate.count(Query.query(finalCriteria), ChatLog.class)
                         .map(total -> {
+                            list.sort((a, b) -> {
+                                LocalDateTime t1 = (LocalDateTime) a.get("createdAt");
+                                LocalDateTime t2 = (LocalDateTime) b.get("createdAt");
+                                if (t1 == null || t2 == null) return 0;
+                                return t2.compareTo(t1);
+                            });
                             int totalPages = size > 0 ? (int) Math.ceil((double) total / size) : 1;
                             Map<String, Object> result = new HashMap<>();
                             result.put("items", list);

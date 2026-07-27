@@ -211,15 +211,18 @@ const endDate       = ref('')
 const selectedLog   = ref(null)
 
 const filteredLogs = computed(() => {
-  if (!searchQuery.value.trim()) return logs.value
-  const q = searchQuery.value.toLowerCase().trim()
-  return logs.value.filter(log =>
-    (log.username && log.username.toLowerCase().includes(q)) ||
-    (log.prompt && log.prompt.toLowerCase().includes(q)) ||
-    (log.response && log.response.toLowerCase().includes(q)) ||
-    (log.sessionId && log.sessionId.toLowerCase().includes(q)) ||
-    (log.modelDisplayName && log.modelDisplayName.toLowerCase().includes(q))
-  )
+  let list = logs.value || []
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase().trim()
+    list = list.filter(log =>
+      (log.username && log.username.toLowerCase().includes(q)) ||
+      (log.prompt && log.prompt.toLowerCase().includes(q)) ||
+      (log.response && log.response.toLowerCase().includes(q)) ||
+      (log.sessionId && log.sessionId.toLowerCase().includes(q)) ||
+      (log.modelDisplayName && log.modelDisplayName.toLowerCase().includes(q))
+    )
+  }
+  return [...list].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
 })
 
 const columns = [
