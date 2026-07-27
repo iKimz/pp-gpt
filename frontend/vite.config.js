@@ -13,11 +13,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Proxy all /api requests to the Spring Boot backend
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
-        // SSE streams need special handling (no timeout)
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq, req) => {
             if (req.headers.accept?.includes('text/event-stream')) {
@@ -32,11 +30,13 @@ export default defineConfig({
   build: {
     target: 'es2022',
     outDir: 'dist',
+    chunkSizeWarningLimit: 1600,
     rollupOptions: {
       output: {
         manualChunks: {
           'vue-vendor': ['vue', 'vue-router', 'pinia'],
           'markdown': ['marked', 'highlight.js', 'dompurify'],
+          'apexcharts': ['apexcharts', 'vue3-apexcharts'],
           'utils': ['axios', '@vueuse/core']
         }
       }

@@ -27,39 +27,31 @@
       </div>
     </div>
 
-    <!-- Stats summary -->
+    <!-- Stats Summary -->
     <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
       <div class="bg-white border border-[#e8e7f1] rounded-2xl p-4 shadow-sm flex items-center gap-4">
-        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">
-          🛠️
-        </div>
+        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">🛠️</div>
         <div>
           <p class="text-xs text-gray-500 font-medium">Total Servers</p>
           <p class="text-xl font-bold text-[#1a1b22] mt-0.5">{{ servers.length }}</p>
         </div>
       </div>
       <div class="bg-white border border-[#e8e7f1] rounded-2xl p-4 shadow-sm flex items-center gap-4">
-        <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg">
-          🟢
-        </div>
+        <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg">🟢</div>
         <div>
           <p class="text-xs text-gray-500 font-medium">Active Servers</p>
           <p class="text-xl font-bold text-[#1a1b22] mt-0.5">{{ servers.filter(s => s.isActive).length }}</p>
         </div>
       </div>
       <div class="bg-white border border-[#e8e7f1] rounded-2xl p-4 shadow-sm flex items-center gap-4">
-        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">
-          🔑
-        </div>
+        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">🔑</div>
         <div>
           <p class="text-xs text-gray-500 font-medium">Static API Key</p>
           <p class="text-xl font-bold text-[#1a1b22] mt-0.5">{{ servers.filter(s => s.authType === 'STATIC_KEY' && s.hasApiKey).length }}</p>
         </div>
       </div>
       <div class="bg-white border border-[#e8e7f1] rounded-2xl p-4 shadow-sm flex items-center gap-4">
-        <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg">
-          🛡️
-        </div>
+        <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg">🛡️</div>
         <div>
           <p class="text-xs text-gray-500 font-medium">OAuth 2.0 Auth</p>
           <p class="text-xl font-bold text-[#1a1b22] mt-0.5">{{ servers.filter(s => s.authType === 'OAUTH2').length }}</p>
@@ -77,27 +69,22 @@
       <button @click="successMsg = null" class="font-bold">&times;</button>
     </div>
 
-    <!-- Loading state -->
+    <!-- Loading State -->
     <div v-if="loading" class="text-center py-12 text-gray-400 text-xs">
       Loading MCP Servers...
     </div>
 
-    <!-- Empty state -->
+    <!-- Empty State -->
     <div v-else-if="servers.length === 0" class="bg-white border border-[#e8e7f1] rounded-2xl p-12 text-center shadow-sm">
-      <div class="w-12 h-12 rounded-2xl bg-[#1a1b22]/5 text-gray-400 flex items-center justify-center mx-auto mb-3 text-xl">
-        🔌
-      </div>
+      <div class="w-12 h-12 rounded-2xl bg-[#1a1b22]/5 text-gray-400 flex items-center justify-center mx-auto mb-3 text-xl">🔌</div>
       <h3 class="text-sm font-bold text-[#1a1b22]">No MCP Servers Configured</h3>
       <p class="text-xs text-gray-400 max-w-sm mx-auto mt-1 mb-4">Register internal microservices, database connectors, or public remote MCP servers (Firecrawl, GitHub, Tavily, etc.).</p>
-      <button
-        @click="openModal()"
-        class="px-4 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] text-xs font-semibold rounded-xl shadow-sm"
-      >
+      <button @click="openModal()" class="px-4 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] text-xs font-semibold rounded-xl shadow-sm">
         + Add First MCP Server
       </button>
     </div>
 
-    <!-- Table -->
+    <!-- Servers Table -->
     <div v-else class="bg-white border border-[#e8e7f1] rounded-2xl shadow-sm overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-left text-xs">
@@ -128,15 +115,9 @@
                       ⚠️ Legacy REST / Manual
                     </span>
                     <template v-else>
-                      <span v-if="srv.supportsTools !== false" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                        🛠️ Tools
-                      </span>
-                      <span v-if="srv.supportsResources" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        📁 Resources
-                      </span>
-                      <span v-if="srv.supportsPrompts" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-                        📝 Prompts
-                      </span>
+                      <span v-if="srv.supportsTools !== false" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">🛠️ Tools</span>
+                      <span v-if="srv.supportsResources" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">📁 Resources</span>
+                      <span v-if="srv.supportsPrompts" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">📝 Prompts</span>
                     </template>
                   </div>
                 </td>
@@ -148,152 +129,136 @@
                         ? 'bg-purple-50 text-purple-700 border-purple-200'
                         : srv.hasApiKey
                           ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-gray-50 text-gray-500 border-gray-200'
+                          : 'bg-gray-50 text-gray-600 border-gray-200'
                     ]"
                   >
-                    <span v-if="srv.authType === 'OAUTH2'">🛡️ OAuth 2.0 {{ srv.hasOAuthTokens ? '(Connected)' : '(Needs Login)' }}</span>
-                    <span v-else>{{ srv.hasApiKey ? '🔑 API Key Set' : '🔓 No Auth' }}</span>
+                    <span>{{ srv.authType === 'OAUTH2' ? '🛡️ OAuth 2.0' : srv.hasApiKey ? '🔑 API Key' : '🔓 None' }}</span>
                   </span>
                 </td>
                 <td class="py-3.5 px-4">
                   <span
                     :class="[
                       'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border',
-                      srv.isActive
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-gray-100 text-gray-400 border-gray-200'
+                      srv.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 text-gray-500 border-gray-200'
                     ]"
                   >
-                    <span :class="['w-1.5 h-1.5 rounded-full', srv.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400']" />
-                    {{ srv.isActive ? 'Active' : 'Inactive' }}
+                    <span :class="['w-1.5 h-1.5 rounded-full', srv.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400']"></span>
+                    {{ srv.isActive ? 'Active' : 'Disabled' }}
                   </span>
                 </td>
                 <td class="py-3.5 px-4">
-                  <button
-                    @click="toggleToolsDrawer(srv)"
-                    class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg border border-gray-200 transition-colors font-medium"
-                  >
-                    <span>🧰 Items ({{ toolCounts[srv.id] ?? 'View' }})</span>
-                    <span class="text-[10px] text-gray-400">{{ expandedServerId === srv.id ? '▲' : '▼' }}</span>
-                  </button>
+                  <div class="flex items-center gap-2">
+                    <button
+                      @click="toggleToolsDrawer(srv)"
+                      class="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      <span>🛠️ {{ toolCounts[srv.id] ?? 0 }} Tools</span>
+                      <span class="text-[9px]">{{ expandedServerId === srv.id ? '▲' : '▼' }}</span>
+                    </button>
+                  </div>
                 </td>
-                <td class="py-3.5 px-4 text-right space-x-1.5">
-                  <button
-                    @click="syncServerTools(srv)"
-                    :disabled="syncingId === srv.id"
-                    class="px-2.5 py-1 text-[11px] bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg border border-blue-200 transition-colors font-medium disabled:opacity-50"
-                  >
-                    {{ syncingId === srv.id ? 'Syncing...' : '🔄 Sync' }}
-                  </button>
-                  <button
-                    v-if="srv.authType === 'OAUTH2'"
-                    @click="startOAuthPopup(srv)"
-                    class="px-2.5 py-1 text-[11px] bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg border border-purple-200 transition-colors font-medium"
-                  >
-                    🔑 Login
-                  </button>
-                  <button
-                    @click="testServer(srv)"
-                    :disabled="testingId === srv.id"
-                    class="px-2.5 py-1 text-[11px] bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg border border-amber-200 transition-colors font-medium disabled:opacity-50"
-                  >
-                    {{ testingId === srv.id ? 'Testing...' : '⚡ Test' }}
-                  </button>
-                  <button
-                    @click="openModal(srv)"
-                    class="px-2.5 py-1 text-[11px] bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg border border-gray-200 transition-colors font-medium"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    @click="confirmDelete(srv)"
-                    class="px-2.5 py-1 text-[11px] bg-red-50 hover:bg-red-100 text-red-600 rounded-lg border border-red-200 transition-colors font-medium"
-                  >
-                    Delete
-                  </button>
+                <td class="py-3.5 px-4 text-right">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <button
+                      @click="testServer(srv)"
+                      :disabled="testingId === srv.id"
+                      title="Test Connection"
+                      class="px-2.5 py-1 text-purple-700 hover:bg-purple-50 rounded-lg transition-colors border border-purple-200 font-semibold text-[11px] flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <span :class="[testingId === srv.id ? 'animate-spin' : '']">⚡</span>
+                      {{ testingId === srv.id ? 'Testing...' : 'Test' }}
+                    </button>
+                    <button
+                      @click="syncServerTools(srv)"
+                      :disabled="syncingId === srv.id"
+                      title="Discover & Sync Tools"
+                      class="px-2.5 py-1 text-blue-700 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200 font-semibold text-[11px] flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <span :class="[syncingId === srv.id ? 'animate-spin' : '']">🔄</span>
+                      {{ syncingId === srv.id ? 'Syncing...' : 'Sync' }}
+                    </button>
+                    <button
+                      @click="openModal(srv)"
+                      title="Edit Configuration"
+                      class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      @click="confirmDelete(srv)"
+                      title="Delete Server"
+                      class="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </td>
               </tr>
 
-              <!-- Expanded Tools Drawer Row -->
-              <tr v-if="expandedServerId === srv.id" class="bg-[#fcfbfe] border-b border-[#e8e7f1]">
-                <td colspan="7" class="p-4">
-                  <div class="space-y-3">
-                    <div class="flex items-center justify-between flex-wrap gap-2">
-                      <h4 class="font-bold text-[#1a1b22] text-xs flex items-center gap-2">
-                        <span>🧰 Discovered Tools & Items for {{ srv.name }}</span>
-                        <span class="text-[10px] text-gray-400 font-mono">(Namespaced: {{ srv.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') }}__*)</span>
-                      </h4>
+              <!-- Expanded Tools Drawer -->
+              <tr v-if="expandedServerId === srv.id" class="bg-[#fcfbfe]">
+                <td colspan="7" class="p-4 border-b border-[#e8e7f1]">
+                  <div class="bg-white rounded-xl border border-[#e8e7f1] p-4 space-y-3">
+                    <div class="flex items-center justify-between border-b border-[#e8e7f1] pb-2">
+                      <div class="flex items-center gap-2">
+                        <h4 class="text-xs font-bold text-[#1a1b22]">Discovered Tools for {{ srv.name }}</h4>
+                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium">
+                          {{ (serverTools[srv.id] || []).length }} registered
+                        </span>
+                      </div>
                       <div class="flex items-center gap-2">
                         <button
                           @click="openManualToolModal(srv)"
-                          class="px-2.5 py-1 text-[11px] bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg border border-amber-300 font-semibold transition-all flex items-center gap-1 shadow-2xs"
+                          class="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-semibold rounded-lg border border-amber-200 transition-all flex items-center gap-1"
                         >
-                          ➕ Add Tool Manually
+                          ➕ Add Manual Tool
                         </button>
                         <button
                           @click="openOpenApiModal(srv)"
-                          class="px-2.5 py-1 text-[11px] bg-indigo-50 hover:bg-indigo-100 text-indigo-800 rounded-lg border border-indigo-300 font-semibold transition-all flex items-center gap-1 shadow-2xs"
+                          class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-[11px] font-semibold rounded-lg border border-indigo-200 transition-all flex items-center gap-1"
                         >
                           📄 Import OpenAPI Spec
-                        </button>
-                        <button @click="syncServerTools(srv)" class="text-[11px] text-blue-600 hover:underline font-medium ml-2">
-                          🔄 Re-sync Now
                         </button>
                       </div>
                     </div>
 
-                    <div v-if="toolsLoading" class="text-xs text-gray-400 py-4 text-center">
-                      Loading discovered tools...
+                    <div v-if="toolsLoading" class="text-center py-4 text-gray-400 text-xs">
+                      Loading tools...
                     </div>
-                    <div v-else-if="!serverTools[srv.id] || serverTools[srv.id].length === 0" class="text-xs text-gray-400 p-4 border border-dashed border-gray-200 rounded-xl text-center">
-                      No tools discovered yet. Click "🔄 Sync" to fetch tools/list from this MCP Server.
+
+                    <div v-else-if="!serverTools[srv.id] || serverTools[srv.id].length === 0" class="text-center py-6 text-gray-400 text-xs">
+                      No tools discovered or registered yet. Click "Sync" or "Add Manual Tool" to populate capabilities.
                     </div>
-                    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+
+                    <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div
                         v-for="tool in serverTools[srv.id]"
                         :key="tool.id"
-                        class="p-3 bg-white rounded-xl border border-[#e8e7f1] shadow-2xs space-y-1.5 relative group hover:border-gray-300 transition-all"
+                        class="p-3 bg-[#f8f7fa] border border-[#e8e7f1] rounded-xl flex items-start justify-between gap-2 hover:border-[#ffd700] transition-colors"
                       >
-                        <div class="flex items-start justify-between gap-2">
-                          <span class="font-bold text-[#1a1b22] font-mono text-[11px] truncate" :title="tool.namespacedName">
-                            {{ tool.namespacedName }}
-                          </span>
-                          <span
-                            :class="[
-                              'text-[9px] px-2 py-0.5 rounded-full font-semibold border shrink-0',
-                              (tool.isAvailable ?? tool.available)
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-red-50 text-red-600 border-red-200'
-                            ]"
-                          >
-                            {{
-                              (tool.isAvailable ?? tool.available)
-                                ? '🟢 Available'
-                                : (tool.failedSyncCount > 0 && tool.failedSyncCount < 3)
-                                  ? `⚠️ Retry ${tool.failedSyncCount}/3`
-                                  : '🔴 Unreachable'
-                            }}
-                          </span>
+                        <div class="space-y-1 overflow-hidden">
+                          <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="font-bold font-mono text-xs text-[#1a1b22]">{{ tool.namespacedName }}</span>
+                            <span v-if="tool.isManual" class="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">Manual</span>
+                          </div>
+                          <p class="text-[11px] text-gray-500 line-clamp-2">{{ tool.description || 'No description available' }}</p>
                         </div>
-                        <p class="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
-                          {{ tool.description || 'No description provided.' }}
-                        </p>
-                        <div class="pt-1 flex items-center justify-between text-[10px]">
+                        <div class="flex items-center gap-1 shrink-0">
                           <button
                             @click="viewToolSchema(tool)"
-                            class="text-blue-600 hover:underline font-medium flex items-center gap-1"
+                            title="View Schema"
+                            class="px-2 py-1 text-[10px] bg-white hover:bg-gray-100 border border-gray-200 rounded-md font-semibold text-gray-700"
                           >
-                            <span>🔍 View JSON Schema</span>
+                            Schema
                           </button>
-                          <div class="flex items-center gap-2">
-                            <button
-                              @click="removeManualTool(srv, tool)"
-                              class="text-red-500 hover:text-red-700 hover:underline font-medium flex items-center gap-0.5"
-                              title="Delete this tool definition"
-                            >
-                              <span>🗑️ Delete</span>
-                            </button>
-                          </div>
+                          <button
+                            v-if="tool.isManual"
+                            @click="removeManualTool(srv, tool)"
+                            title="Delete Manual Tool"
+                            class="p-1 text-red-500 hover:bg-red-50 rounded-md"
+                          >
+                            🗑️
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -306,161 +271,70 @@
       </div>
     </div>
 
-    <!-- Create/Edit Modal -->
-    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div class="bg-white rounded-2xl max-w-lg w-full border border-[#e8e7f1] shadow-2xl p-6 relative">
-        <h3 class="text-base font-bold text-[#1a1b22] font-heading mb-4">
-          {{ editingId ? 'Edit MCP Server' : 'Add New MCP Server' }}
-        </h3>
+    <!-- Modals -->
+    <McpServerModal
+      :show="showModal"
+      :editing-server="editingServer"
+      :submitting="saving"
+      @close="closeModal"
+      @save="saveServer"
+    />
 
-        <form @submit.prevent="saveServer" class="space-y-4 text-xs">
-          <div>
-            <label class="block font-medium text-gray-700 mb-1">Server Name *</label>
-            <input
-              v-model="form.name"
-              type="text"
-              required
-              placeholder="e.g. Local MCP"
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
-            />
-          </div>
+    <ManualToolModal
+      :show="showManualModal"
+      :server="currentManualServer"
+      :submitting="savingManual"
+      @close="showManualModal = false"
+      @save="saveManualTool"
+    />
 
-          <div>
-            <label class="block font-medium text-gray-700 mb-1">Endpoint URL *</label>
-            <input
-              v-model="form.endpointUrl"
-              type="url"
-              required
-              placeholder="https://example-server.modelcontextprotocol.io/mcp"
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px]"
-            />
-          </div>
+    <OpenApiImportModal
+      :show="showOpenApiModal"
+      :server="currentOpenApiServer"
+      :submitting="importingOpenApi"
+      @close="showOpenApiModal = false"
+      @save="submitOpenApiImport"
+    />
 
-          <div>
-            <label class="block font-medium text-gray-700 mb-1">API Key / Bearer Token (Optional)</label>
-            <input
-              v-model="form.apiKey"
-              type="password"
-              placeholder="e.g. Personal API Key (fc-...) or Bearer Token"
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
-            />
-            <p class="text-[10px] text-gray-400 mt-1">Leave blank if using Interactive OAuth Popup Authorization.</p>
-          </div>
-
-          <!-- Advanced OAuth Options (Collapsible) -->
-          <details class="text-[#1a1b22] border border-gray-200 rounded-xl p-3 bg-gray-50/50">
-            <summary class="font-semibold cursor-pointer text-xs text-gray-600 select-none">
-              ⚙️ Optional Custom OAuth Config
-            </summary>
-            <div class="space-y-3 mt-3 pt-3 border-t border-gray-200">
-              <div>
-                <label class="block font-medium text-gray-700 mb-1">OAuth Client ID (Optional)</label>
-                <input
-                  v-model="form.oauthClientId"
-                  type="text"
-                  placeholder="Only if required by custom OAuth Provider"
-                  class="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
-                />
-              </div>
-              <div>
-                <label class="block font-medium text-gray-700 mb-1">OAuth Authorize URL (Optional)</label>
-                <input
-                  v-model="form.oauthAuthorizeUrl"
-                  type="url"
-                  placeholder="Auto-discovered via ⚡ Test connection if left blank"
-                  class="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px]"
-                />
-              </div>
-            </div>
-          </details>
-
-          <div>
-            <label class="block font-medium text-gray-700 mb-1">Description</label>
-            <textarea
-              v-model="form.description"
-              rows="2"
-              placeholder="Description of capabilities..."
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
-            />
-          </div>
-
-          <div class="flex items-center gap-2 pt-1">
-            <input
-              v-model="form.isActive"
-              type="checkbox"
-              id="isActive"
-              class="rounded text-[#ffd700] focus:ring-[#ffd700]"
-            />
-            <label for="isActive" class="font-medium text-gray-700">Enable this MCP Server for AI Tool Calling</label>
-          </div>
-
-          <div class="flex justify-end gap-2 pt-4 border-t border-[#e8e7f1]">
-            <button
-              type="button"
-              @click="closeModal"
-              class="px-4 py-2 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              :disabled="saving"
-              class="px-4 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] font-semibold rounded-xl shadow-sm disabled:opacity-50"
-            >
-              {{ saving ? 'Saving...' : 'Save MCP Server' }}
-            </button>
-          </div>
-        </form>
+    <!-- Delete Confirmation Modal -->
+    <div v-if="deletingServer" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-sm w-full border border-[#e8e7f1] shadow-2xl p-6 space-y-4">
+        <h3 class="text-base font-bold text-[#1a1b22]">Delete MCP Server?</h3>
+        <p class="text-xs text-gray-500">
+          Are you sure you want to delete <strong>{{ deletingServer.name }}</strong>? All discovered tools and configurations will be removed.
+        </p>
+        <div class="flex justify-end gap-2 pt-2 border-t border-[#e8e7f1]">
+          <button @click="deletingServer = null" class="px-4 py-2 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl font-medium text-xs">
+            Cancel
+          </button>
+          <button @click="executeDelete" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-sm text-xs">
+            Delete Server
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- Schema Viewer Modal -->
-    <div v-if="selectedToolSchema" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div class="bg-white rounded-2xl max-w-xl w-full border border-[#e8e7f1] shadow-2xl p-6 relative">
-        <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#e8e7f1]">
-          <h3 class="text-sm font-bold text-[#1a1b22] font-heading flex items-center gap-2">
-            <span>🔍 Tool Input Schema</span>
-            <span class="font-mono text-xs text-gray-500">({{ selectedToolSchema.namespacedName }})</span>
-          </h3>
-          <button @click="selectedToolSchema = null" class="font-bold text-gray-400 hover:text-gray-600 text-base">&times;</button>
+    <!-- Tool Schema Viewer Modal -->
+    <div v-if="selectedToolSchema" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-lg w-full border border-[#e8e7f1] shadow-2xl p-6 max-h-[80vh] flex flex-col">
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#e8e7f1] shrink-0">
+          <h3 class="text-sm font-bold font-mono text-[#1a1b22]">{{ selectedToolSchema.namespacedName }}</h3>
+          <button @click="selectedToolSchema = null" class="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
         </div>
-        <div class="bg-[#1a1b26] p-4 rounded-xl text-gray-200 font-mono text-xs overflow-auto max-h-[60vh] border border-[#2e3047]">
+        <div class="flex-1 overflow-y-auto bg-[#1a1b26] p-4 rounded-xl text-gray-200 font-mono text-xs border border-[#2e3047]">
           <pre class="whitespace-pre-wrap break-all">{{ formatJson(selectedToolSchema.inputSchema) }}</pre>
         </div>
-        <div class="pt-3 mt-3 border-t border-[#e8e7f1] flex justify-end">
-          <button @click="selectedToolSchema = null" class="px-4 py-1.5 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] text-xs font-bold rounded-xl shadow-sm">
+        <div class="pt-3 mt-3 border-t border-[#e8e7f1] flex justify-end shrink-0">
+          <button @click="selectedToolSchema = null" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl">
             Close
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Delete Confirmation Modal (Cascading Notice) -->
-    <div v-if="deletingServer" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div class="bg-white rounded-2xl max-w-md w-full border border-[#e8e7f1] shadow-2xl p-6 relative space-y-4 text-xs">
-        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center font-bold text-lg">
-          ⚠️
-        </div>
-        <div>
-          <h3 class="text-base font-bold text-[#1a1b22]">Delete MCP Server "{{ deletingServer.name }}"?</h3>
-          <p class="text-gray-500 mt-1 leading-relaxed">
-            This will permanently remove the MCP Server connection, all discovered tools, and unbind all associated group tool access configurations (<span class="font-mono text-red-600">ON DELETE CASCADE</span>).
-          </p>
-        </div>
-        <div class="flex justify-end gap-2 pt-2 border-t border-[#e8e7f1]">
-          <button @click="deletingServer = null" class="px-4 py-2 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl font-medium">
-            Cancel
-          </button>
-          <button @click="executeDelete" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-sm">
-            Delete Server & Configs
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- Connection Test Result Modal -->
-    <div v-if="testResult" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div class="bg-white rounded-2xl max-w-2xl w-full border border-[#e8e7f1] shadow-2xl p-6 max-h-[85vh] flex flex-col overflow-hidden">
+    <div v-if="testResult" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-xl w-full border border-[#e8e7f1] shadow-2xl p-6 max-h-[85vh] flex flex-col overflow-hidden">
         <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#e8e7f1] shrink-0">
           <h3 class="text-base font-bold text-[#1a1b22] font-heading flex items-center gap-2">
             <span>⚡ Connection Test Result</span>
@@ -496,167 +370,10 @@
         </div>
 
         <div class="pt-3 mt-3 border-t border-[#e8e7f1] flex justify-end shrink-0">
-          <button
-            @click="testResult = null"
-            class="px-5 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] text-xs font-bold rounded-xl shadow-sm transition-all"
-          >
+          <button @click="testResult = null" class="px-5 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] text-xs font-bold rounded-xl shadow-sm transition-all">
             Close Result
           </button>
         </div>
-      </div>
-    </div>
-
-    <!-- Manual Tool Add Modal -->
-    <div v-if="showManualModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div class="bg-white rounded-2xl max-w-lg w-full border border-[#e8e7f1] shadow-2xl p-6 relative">
-        <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#e8e7f1]">
-          <div>
-            <h3 class="text-base font-bold text-[#1a1b22] font-heading flex items-center gap-2">
-              <span>➕ Add Tool Manually</span>
-              <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium border border-amber-200">Legacy REST Fallback</span>
-            </h3>
-            <p class="text-xs text-gray-400 mt-0.5">Define custom tool capabilities for REST endpoints without tools/list protocol support.</p>
-          </div>
-          <button @click="showManualModal = false" class="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 font-bold text-sm flex items-center justify-center">&times;</button>
-        </div>
-
-        <form @submit.prevent="saveManualTool" class="space-y-4 text-xs">
-          <!-- Tool Name with Hint -->
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="font-medium text-gray-700">Tool Identifier / Name *</label>
-              <span class="text-[10px] text-gray-400 font-mono">e.g. check_order_status</span>
-            </div>
-            <input
-              v-model="manualForm.toolName"
-              type="text"
-              required
-              placeholder="check_order_status"
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-xs"
-            />
-            <p class="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
-              <span>💡</span>
-              <span>Namespacing prefix will be prepended automatically (e.g. <code class="font-mono text-blue-600 bg-blue-50 px-1 py-0.5 rounded">server_name__tool_name</code>).</span>
-            </p>
-          </div>
-
-          <!-- Description with Hint -->
-          <div>
-            <label class="block font-medium text-gray-700 mb-1">Function Description for LLM *</label>
-            <textarea
-              v-model="manualForm.description"
-              rows="2"
-              required
-              placeholder="Describe what this tool does, when to call it, and what it returns..."
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] text-xs leading-relaxed"
-            />
-            <p class="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
-              <span>💡</span>
-              <span>LLMs read this prompt to decide when to automatically trigger this function.</span>
-            </p>
-          </div>
-
-          <!-- Input Schema with Presets & Realtime Validator -->
-          <div>
-            <div class="flex items-center justify-between mb-1.5 flex-wrap gap-1">
-              <label class="font-medium text-gray-700">JSON Input Schema (Parameters)</label>
-              <!-- Realtime Validation Badge -->
-              <span
-                :class="[
-                  'text-[10px] font-semibold px-2 py-0.5 rounded-full border',
-                  isManualSchemaValid
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-red-50 text-red-600 border-red-200'
-                ]"
-              >
-                {{ isManualSchemaValid ? '✅ Valid JSON Schema' : '❌ Invalid JSON Syntax' }}
-              </span>
-            </div>
-
-            <!-- Preset Buttons -->
-            <div class="flex items-center gap-1.5 mb-2 flex-wrap text-[10px]">
-              <span class="text-gray-400 font-medium">Quick Presets:</span>
-              <button
-                type="button"
-                @click="applySchemaPreset('EMPTY')"
-                class="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors border border-gray-200"
-              >
-                ⚡ No Parameters ({})
-              </button>
-              <button
-                type="button"
-                @click="applySchemaPreset('QUERY')"
-                class="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md transition-colors border border-blue-200"
-              >
-                📝 Single Text (query)
-              </button>
-              <button
-                type="button"
-                @click="applySchemaPreset('ID_LIMIT')"
-                class="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md transition-colors border border-purple-200"
-              >
-                🔢 ID & Limit Params
-              </button>
-              <button
-                type="button"
-                @click="applySchemaPreset('REST_API')"
-                class="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-md transition-colors border border-emerald-200"
-              >
-                🌐 REST API (Method/Path)
-              </button>
-            </div>
-
-            <textarea
-              v-model="manualForm.inputSchema"
-              rows="5"
-              placeholder='{"type":"object","properties":{"user_id":{"type":"string"}},"required":["user_id"]}'
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px] leading-snug"
-            />
-          </div>
-
-          <!-- Buttons -->
-          <div class="flex justify-end gap-2 pt-3 border-t border-[#e8e7f1]">
-            <button @click="showManualModal = false" type="button" class="px-4 py-2 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl font-medium">
-              Cancel
-            </button>
-            <button :disabled="savingManual || !isManualSchemaValid" type="submit" class="px-5 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] font-semibold rounded-xl shadow-sm disabled:opacity-50 transition-all">
-              {{ savingManual ? 'Saving Tool...' : 'Save Manual Tool' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- OpenAPI Spec Import Modal -->
-    <div v-if="showOpenApiModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div class="bg-white rounded-2xl max-w-xl w-full border border-[#e8e7f1] shadow-2xl p-6 relative">
-        <h3 class="text-base font-bold text-[#1a1b22] font-heading mb-1 flex items-center gap-2">
-          <span>📄 Import OpenAPI / Swagger Spec</span>
-          <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-normal border border-indigo-200">OpenAPI 3.0 Auto Importer</span>
-        </h3>
-        <p class="text-xs text-gray-400 mb-4">Paste raw OpenAPI/Swagger JSON content to automatically parse REST endpoints into tool definitions.</p>
-
-        <form @submit.prevent="submitOpenApiImport" class="space-y-4 text-xs">
-          <div>
-            <label class="block font-medium text-gray-700 mb-1">OpenAPI Spec (JSON) *</label>
-            <textarea
-              v-model="openApiSpecText"
-              rows="10"
-              required
-              placeholder='{"openapi":"3.0.0","info":{"title":"Sample API"},"paths":{"/users":{"get":{"summary":"Get list of users"}}}}'
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px]"
-            />
-          </div>
-
-          <div class="flex justify-end gap-2 pt-2 border-t border-[#e8e7f1]">
-            <button @click="showOpenApiModal = false" type="button" class="px-4 py-2 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl font-medium">
-              Cancel
-            </button>
-            <button :disabled="importingOpenApi" type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-sm disabled:opacity-50">
-              {{ importingOpenApi ? 'Parsing & Importing...' : 'Import Endpoints as Tools' }}
-            </button>
-          </div>
-        </form>
       </div>
     </div>
   </div>
@@ -666,28 +383,9 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { adminApi } from '@/api/admin'
 import apiClient from '@/api/client'
-
-const isManualSchemaValid = computed(() => {
-  if (!manualForm.value.inputSchema || !manualForm.value.inputSchema.trim()) return true
-  try {
-    const parsed = JSON.parse(manualForm.value.inputSchema)
-    return typeof parsed === 'object' && parsed !== null
-  } catch (e) {
-    return false
-  }
-})
-
-function applySchemaPreset(presetType) {
-  if (presetType === 'EMPTY') {
-    manualForm.value.inputSchema = '{\n  "type": "object",\n  "properties": {}\n}'
-  } else if (presetType === 'QUERY') {
-    manualForm.value.inputSchema = '{\n  "type": "object",\n  "properties": {\n    "input_query": {\n      "type": "string",\n      "description": "Target search query or string"\n    }\n  },\n  "required": ["input_query"]\n}'
-  } else if (presetType === 'ID_LIMIT') {
-    manualForm.value.inputSchema = '{\n  "type": "object",\n  "properties": {\n    "user_id": {\n      "type": "string",\n      "description": "Target user ID"\n    },\n    "limit": {\n      "type": "integer",\n      "description": "Maximum number of records"\n    }\n  },\n  "required": ["user_id"]\n}'
-  } else if (presetType === 'REST_API') {
-    manualForm.value.inputSchema = '{\n  "type": "object",\n  "properties": {\n    "method": {\n      "type": "string",\n      "description": "HTTP Method (GET, POST, PUT, DELETE)",\n      "default": "POST"\n    },\n    "path": {\n      "type": "string",\n      "description": "Relative endpoint path (e.g. /api/v1/charge)",\n      "default": "/api/v1/charge"\n    }\n  }\n}'
-  }
-}
+import McpServerModal from '@/components/admin/mcp/McpServerModal.vue'
+import ManualToolModal from '@/components/admin/mcp/ManualToolModal.vue'
+import OpenApiImportModal from '@/components/admin/mcp/OpenApiImportModal.vue'
 
 const servers = ref([])
 const loading = ref(false)
@@ -707,99 +405,15 @@ const toolsLoading = ref(false)
 const selectedToolSchema = ref(null)
 
 const showModal = ref(false)
-const editingId = ref(null)
-const form = ref({
-  name: '',
-  endpointUrl: '',
-  authType: 'STATIC_KEY',
-  apiKey: '',
-  oauthAuthorizeUrl: '',
-  oauthClientId: '',
-  description: '',
-  isActive: true
-})
+const editingServer = ref(null)
 
-// Manual Tool & OpenAPI Import Modal State
 const showManualModal = ref(false)
-const manualServerId = ref(null)
+const currentManualServer = ref(null)
 const savingManual = ref(false)
-const manualForm = ref({
-  toolName: '',
-  description: '',
-  inputSchema: ''
-})
 
 const showOpenApiModal = ref(false)
-const openApiServerId = ref(null)
+const currentOpenApiServer = ref(null)
 const importingOpenApi = ref(false)
-const openApiSpecText = ref('')
-
-function openManualToolModal(server) {
-  manualServerId.value = server.id
-  manualForm.value = {
-    toolName: '',
-    description: '',
-    inputSchema: '{\n  "type": "object",\n  "properties": {},\n  "required": []\n}'
-  }
-  showManualModal.value = true
-}
-
-async function saveManualTool() {
-  if (!manualServerId.value) return
-  savingManual.value = true
-  error.value = null
-  try {
-    const { data } = await adminApi.createManualMcpTool(manualServerId.value, manualForm.value)
-    successMsg.value = `Manual tool '${data.toolName}' created successfully!`
-    showManualModal.value = false
-    loadToolCount(manualServerId.value)
-    if (expandedServerId.value === manualServerId.value) {
-      toggleToolsDrawer({ id: manualServerId.value })
-    }
-  } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to create manual tool'
-  } finally {
-    savingManual.value = false
-  }
-}
-
-async function removeManualTool(server, tool) {
-  if (!confirm(`Are you sure you want to delete tool '${tool.toolName}' (${tool.namespacedName})?`)) return
-  error.value = null
-  try {
-    await adminApi.deleteManualMcpTool(server.id, tool.id)
-    successMsg.value = `Tool '${tool.toolName}' deleted successfully!`
-    loadToolCount(server.id)
-    if (serverTools.value[server.id]) {
-      serverTools.value[server.id] = serverTools.value[server.id].filter(t => t.id !== tool.id)
-    }
-  } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to delete tool'
-  }
-}
-
-function openOpenApiModal(server) {
-  openApiServerId.value = server.id
-  openApiSpecText.value = ''
-  showOpenApiModal.value = true
-}
-
-async function submitOpenApiImport() {
-  if (!openApiServerId.value || !openApiSpecText.value) return
-  importingOpenApi.value = true
-  error.value = null
-  try {
-    const { data } = await adminApi.importOpenApiMcpSpec(openApiServerId.value, { openApiSpec: openApiSpecText.value })
-    successMsg.value = `Imported ${data.length} endpoints as tools successfully!`
-    showOpenApiModal.value = false
-    loadToolCount(openApiServerId.value)
-    fetchServers()
-  } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to import OpenAPI spec'
-  } finally {
-    importingOpenApi.value = false
-  }
-}
 
 async function fetchServers() {
   loading.value = true
@@ -807,7 +421,6 @@ async function fetchServers() {
   try {
     const { data } = await apiClient.get('/api/v1/admin/mcp-servers')
     servers.value = data
-    // Fetch tool counts for servers
     for (const srv of data) {
       loadToolCount(srv.id)
     }
@@ -888,47 +501,23 @@ function formatJson(jsonStr) {
 }
 
 function openModal(server = null) {
-  if (server) {
-    editingId.value = server.id
-    form.value = {
-      name: server.name,
-      endpointUrl: server.endpointUrl,
-      authType: server.authType || 'STATIC_KEY',
-      apiKey: '',
-      oauthAuthorizeUrl: server.oauthAuthorizeUrl || '',
-      oauthClientId: server.oauthClientId || '',
-      description: server.description || '',
-      isActive: server.isActive
-    }
-  } else {
-    editingId.value = null
-    form.value = {
-      name: '',
-      endpointUrl: '',
-      authType: 'STATIC_KEY',
-      apiKey: '',
-      oauthAuthorizeUrl: '',
-      oauthClientId: '',
-      description: '',
-      isActive: true
-    }
-  }
+  editingServer.value = server
   showModal.value = true
 }
 
 function closeModal() {
   showModal.value = false
-  editingId.value = null
+  editingServer.value = null
 }
 
-async function saveServer() {
+async function saveServer(formData) {
   saving.value = true
   error.value = null
   try {
-    if (editingId.value) {
-      await apiClient.put(`/api/v1/admin/mcp-servers/${editingId.value}`, form.value)
+    if (editingServer.value?.id) {
+      await apiClient.put(`/api/v1/admin/mcp-servers/${editingServer.value.id}`, formData)
     } else {
-      await apiClient.post('/api/v1/admin/mcp-servers', form.value)
+      await apiClient.post('/api/v1/admin/mcp-servers', formData)
     }
     closeModal()
     fetchServers()
@@ -973,6 +562,70 @@ async function testServer(server) {
     }
   } finally {
     testingId.value = null
+  }
+}
+
+function openManualToolModal(server) {
+  currentManualServer.value = server
+  showManualModal.value = true
+}
+
+async function saveManualTool(formData) {
+  if (!currentManualServer.value?.id) return
+  savingManual.value = true
+  error.value = null
+  try {
+    const { data } = await adminApi.createManualMcpTool(currentManualServer.value.id, formData)
+    successMsg.value = `Manual tool '${data.toolName}' created successfully!`
+    showManualModal.value = false
+    loadToolCount(currentManualServer.value.id)
+    if (expandedServerId.value === currentManualServer.value.id) {
+      toggleToolsDrawer(currentManualServer.value)
+    }
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to create manual tool'
+  } finally {
+    savingManual.value = false
+  }
+}
+
+async function removeManualTool(server, tool) {
+  if (!confirm(`Are you sure you want to delete tool '${tool.toolName}' (${tool.namespacedName})?`)) return
+  error.value = null
+  try {
+    await adminApi.deleteManualMcpTool(server.id, tool.id)
+    successMsg.value = `Tool '${tool.toolName}' deleted successfully!`
+    loadToolCount(server.id)
+    if (serverTools.value[server.id]) {
+      serverTools.value[server.id] = serverTools.value[server.id].filter(t => t.id !== tool.id)
+    }
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to delete tool'
+  }
+}
+
+function openOpenApiModal(server) {
+  currentOpenApiServer.value = server
+  showOpenApiModal.value = true
+}
+
+async function submitOpenApiImport(formData) {
+  if (!currentOpenApiServer.value?.id) return
+  importingOpenApi.value = true
+  error.value = null
+  try {
+    const payload = formData.openApiUrl
+      ? { openApiUrl: formData.openApiUrl }
+      : { openApiSpec: formData.openApiContent }
+    const { data } = await adminApi.importOpenApiMcpSpec(currentOpenApiServer.value.id, payload)
+    successMsg.value = `Imported ${data.length} endpoints as tools successfully!`
+    showOpenApiModal.value = false
+    loadToolCount(currentOpenApiServer.value.id)
+    fetchServers()
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to import OpenAPI spec'
+  } finally {
+    importingOpenApi.value = false
   }
 }
 
