@@ -18,6 +18,7 @@ import com.ppgpt.gateway.repository.McpPromptRepository;
 import com.ppgpt.gateway.repository.GroupMcpToolAccessRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -444,8 +445,31 @@ public class McpServerService {
                     return cleanName.equals(finalPrefix) || server.getName().equalsIgnoreCase(finalPrefix);
                 })
                 .flatMap(server -> {
-                    WebClient.RequestBodySpec spec = aiWebClient.post()
-                            .uri(server.getEndpointUrl())
+                    HttpMethod httpMethod = HttpMethod.POST;
+                    String targetUrl = server.getEndpointUrl();
+
+                    if ("NON_MCP_REST".equals(server.getCapabilityStatus())) {
+                        String customMethod = (arguments != null && arguments.containsKey("method")) 
+                                ? String.valueOf(arguments.get("method")) 
+                                : "POST";
+                        try {
+                            httpMethod = HttpMethod.valueOf(customMethod.toUpperCase());
+                        } catch (Exception e) {
+                            httpMethod = HttpMethod.POST;
+                        }
+
+                        if (arguments != null && arguments.containsKey("path")) {
+                            String subPath = String.valueOf(arguments.get("path"));
+                            if (subPath != null && subPath.startsWith("/")) {
+                                if (!targetUrl.endsWith(subPath)) {
+                                    targetUrl = targetUrl.replaceAll("/+$", "") + subPath;
+                                }
+                            }
+                        }
+                    }
+
+                    WebClient.RequestBodySpec spec = aiWebClient.method(httpMethod)
+                            .uri(targetUrl)
                             .contentType(MediaType.APPLICATION_JSON)
                             .header("Accept", "application/json, text/event-stream");
 
@@ -457,9 +481,11 @@ public class McpServerService {
                         spec.header("Authorization", "Bearer " + rawToken);
                     }
 
-                    Object postBody;
+                    Object postBody = null;
                     if ("NON_MCP_REST".equals(server.getCapabilityStatus())) {
-                        postBody = arguments != null ? arguments : Map.of();
+                        if (httpMethod != HttpMethod.GET) {
+                            postBody = arguments != null ? arguments : Map.of();
+                        }
                     } else {
                         postBody = Map.of(
                                 "jsonrpc", "2.0",
@@ -472,8 +498,9 @@ public class McpServerService {
                         );
                     }
 
-                    return spec.bodyValue(postBody)
-                            .retrieve()
+                    WebClient.RequestHeadersSpec<?> headersSpec = (postBody != null) ? spec.bodyValue(postBody) : spec;
+
+                    return headersSpec.retrieve()
                             .bodyToFlux(String.class)
                             .collectList()
                             .map(lines -> String.join("\n", lines))
