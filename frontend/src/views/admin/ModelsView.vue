@@ -242,7 +242,11 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import DataTable from '@/components/DataTable.vue'
 import ModalForm from '@/components/ModalForm.vue'
 import { adminApi } from '@/api/admin'
+import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 
+const toast = useToast()
+const { confirm } = useConfirm()
 const models    = ref([])
 const loading   = ref(true)
 const saving    = ref(false)
@@ -374,10 +378,6 @@ function prefillPlaceholder() {
   form.credentials = ''
 }
 
-import { useToast } from '@/composables/useToast'
-
-const toast = useToast()
-
 async function handleSave() {
   if (form.credentials && !isValidJson.value) {
     toast.error('Credentials field contains invalid JSON. Please fix it before saving.')
@@ -404,7 +404,14 @@ async function handleSave() {
 }
 
 async function handleDelete(m) {
-  if (!confirm(`Delete model "${m.modelName}"?`)) return
+  const isConfirmed = await confirm({
+    title: 'Delete AI Model',
+    message: `Are you sure you want to delete model "${m.name || m.modelName}"? This action cannot be undone.`,
+    confirmText: 'Delete Model',
+    type: 'danger'
+  })
+  if (!isConfirmed) return
+
   try {
     await adminApi.deleteModel(m.id)
     toast.success(`Model '${m.name || m.modelName}' deleted successfully!`)

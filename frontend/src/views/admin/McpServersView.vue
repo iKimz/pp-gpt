@@ -589,18 +589,31 @@ async function saveManualTool(formData) {
   }
 }
 
+import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
+
+const toast = useToast()
+const { confirm } = useConfirm()
+
 async function removeManualTool(server, tool) {
-  if (!confirm(`Are you sure you want to delete tool '${tool.toolName}' (${tool.namespacedName})?`)) return
+  const isConfirmed = await confirm({
+    title: 'Delete Tool',
+    message: `Are you sure you want to delete tool '${tool.toolName}' (${tool.namespacedName})?`,
+    confirmText: 'Delete Tool',
+    type: 'danger'
+  })
+  if (!isConfirmed) return
+
   error.value = null
   try {
     await adminApi.deleteManualMcpTool(server.id, tool.id)
-    successMsg.value = `Tool '${tool.toolName}' deleted successfully!`
+    toast.success(`Tool '${tool.toolName}' deleted successfully!`)
     loadToolCount(server.id)
     if (serverTools.value[server.id]) {
       serverTools.value[server.id] = serverTools.value[server.id].filter(t => t.id !== tool.id)
     }
   } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to delete tool'
+    toast.error(e.response?.data?.message || 'Failed to delete tool')
   }
 }
 

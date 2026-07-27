@@ -213,8 +213,10 @@ import DataTable from '@/components/DataTable.vue'
 import ModalForm from '@/components/ModalForm.vue'
 import { adminApi } from '@/api/admin'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 
 const toast = useToast()
+const { confirm } = useConfirm()
 const groups    = ref([])
 const allModels = ref([])
 const loading   = ref(true)
@@ -364,8 +366,20 @@ async function handleSave() {
 }
 
 async function handleDelete(group) {
-  if (!confirm(`Delete group "${group.groupName}"?`)) return
-  await adminApi.deleteGroup(group.id)
-  await loadGroups()
+  const isConfirmed = await confirm({
+    title: 'Delete User Group',
+    message: `Are you sure you want to delete user group "${group.groupName}"? Users in this group will lose group access policies.`,
+    confirmText: 'Delete Group',
+    type: 'danger'
+  })
+  if (!isConfirmed) return
+
+  try {
+    await adminApi.deleteGroup(group.id)
+    toast.success(`Group '${group.groupName}' deleted successfully!`)
+    await loadGroups()
+  } catch (e) {
+    toast.error(e.response?.data?.message || 'Delete failed')
+  }
 }
 </script>

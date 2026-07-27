@@ -108,7 +108,11 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { adminApi } from '@/api/admin'
+import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 
+const toast = useToast()
+const { confirm } = useConfirm()
 const tableRows = ref([])
 const loading   = ref(true)
 const actionIdx = ref(-1)
@@ -202,7 +206,14 @@ async function saveRate(rate, idx) {
 }
 
 async function resetRate(rate, idx) {
-  if (!confirm(`Reset credit multipliers for "${rate.modelName}" back to system defaults (1.0 in / 2.0 out)?`)) return
+  const isConfirmed = await confirm({
+    title: 'Reset Credit Multipliers',
+    message: `Are you sure you want to reset credit multipliers for "${rate.modelName}" back to system defaults (1.0 in / 2.0 out)?`,
+    confirmText: 'Reset Multipliers',
+    type: 'warning'
+  })
+  if (!isConfirmed) return
+
   actionIdx.value = idx
   try {
     if (rate.id) {

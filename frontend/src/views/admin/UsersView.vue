@@ -64,7 +64,11 @@ import { ref, reactive, onMounted } from 'vue'
 import DataTable from '@/components/DataTable.vue'
 import ModalForm from '@/components/ModalForm.vue'
 import { adminApi } from '@/api/admin'
+import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 
+const toast = useToast()
+const { confirm } = useConfirm()
 const users     = ref([])
 const groups    = ref([])
 const loading   = ref(true)
@@ -101,10 +105,6 @@ function openEdit(user) {
   showModal.value = true
 }
 
-import { useToast } from '@/composables/useToast'
-
-const toast = useToast()
-
 async function handleSave() {
   saving.value = true
   try {
@@ -125,7 +125,14 @@ async function handleSave() {
 }
 
 async function handleDelete(user) {
-  if (!confirm(`Delete user "${user.username}"?`)) return
+  const isConfirmed = await confirm({
+    title: 'Delete User',
+    message: `Are you sure you want to delete user "${user.username}"? This action cannot be undone.`,
+    confirmText: 'Delete User',
+    type: 'danger'
+  })
+  if (!isConfirmed) return
+
   try {
     await adminApi.deleteUser(user.id)
     toast.success(`User '${user.username}' deleted successfully!`)
