@@ -382,15 +382,19 @@ public class AdminService {
      * Retrieves paginated audit logs with optional filtering.
      *
      * @param search    Username search keyword
+     * @param modelId   Optional model ID filter
      * @param startDate Optional start date filter
      * @param endDate   Optional end date filter
      * @param page      Page index (0-based)
      * @param size      Page size
      * @return Mono emitting paginated Map of items and total count
      */
-    public Mono<Map<String, Object>> getAuditLogs(String search, LocalDate startDate, LocalDate endDate, int page, int size) {
+    public Mono<Map<String, Object>> getAuditLogs(String modelId, String search, LocalDate startDate, LocalDate endDate, int page, int size) {
         Criteria criteria = Criteria.empty();
 
+        if (modelId != null && !modelId.isBlank()) {
+            criteria = criteria.and("model_id").is(modelId);
+        }
         if (startDate != null) {
             criteria = criteria.and("created_at").greaterThanOrEquals(startDate.atStartOfDay());
         }

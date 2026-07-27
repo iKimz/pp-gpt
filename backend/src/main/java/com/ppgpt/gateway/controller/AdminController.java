@@ -144,11 +144,12 @@ public class AdminController {
 
     @GetMapping("/audit-logs")
     public Mono<Map<String, Object>> auditLogs(
+            @RequestParam(required = false) String modelId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return adminService.getAuditLogs(search, startDate, endDate, page, size);
+        return adminService.getAuditLogs(modelId, search, startDate, endDate, page, size);
     }
 }
