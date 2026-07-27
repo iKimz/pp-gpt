@@ -55,6 +55,8 @@ services:
       # You can generate a new one via: openssl rand -hex 32
       ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       MCP_OAUTH_REDIRECT_URI: ${MCP_OAUTH_REDIRECT_URI:-http://localhost/api/v1/mcp/oauth/callback}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - ai-gateway-net
 

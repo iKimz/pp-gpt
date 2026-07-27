@@ -1133,7 +1133,19 @@ public class McpServerService {
                         errorResult.put("targetUrl", finalTargetUrl);
                         errorResult.put("method", finalMethod);
                         errorResult.put("durationMs", duration);
-                        errorResult.put("error", e.getMessage() != null ? e.getMessage() : e.toString());
+
+                        String errorMsg = e.getMessage() != null ? e.getMessage() : e.toString();
+                        if (e.getCause() != null && e.getCause().getMessage() != null) {
+                            errorMsg = e.getCause().getMessage();
+                        }
+
+                        if (finalTargetUrl.contains("host.docker.internal")) {
+                            errorMsg = "DNS Resolution Failed for 'host.docker.internal' (" + errorMsg + "). "
+                                    + "If running in Docker on Linux, ensure 'extra_hosts: [\"host.docker.internal:host-gateway\"]' is set in docker-compose.yml, "
+                                    + "or update the Endpoint URL to use an accessible IP/domain.";
+                        }
+
+                        errorResult.put("error", errorMsg);
                         return Mono.just(errorResult);
                     });
                 });
