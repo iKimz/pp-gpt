@@ -513,12 +513,12 @@ public class AdminService {
                         CreditRate rate = modelId != null ? creditRatesMap.get(modelId) : null;
                         double inMult = (rate != null && rate.getInputMultiplier() != null) ? rate.getInputMultiplier().doubleValue() : 1.0;
                         double outMult = (rate != null && rate.getOutputMultiplier() != null) ? rate.getOutputMultiplier().doubleValue() : 2.0;
-                        double credits = (currIn * inMult / 1000.0) + (currOut * outMult / 1000.0);
+                        double credits = (currIn * inMult) + (currOut * outMult);
 
                         aggRow.put("totalInputTokens", currIn);
                         aggRow.put("totalOutputTokens", currOut);
                         aggRow.put("totalTokens", totalTok);
-                        aggRow.put("totalCredits", Math.round(credits * 1000.0) / 1000.0);
+                        aggRow.put("totalCredits", Math.round(credits * 100.0) / 100.0);
                     }
 
                     List<Map<String, Object>> aggregatedList = new ArrayList<>(aggregatedMap.values());
@@ -581,12 +581,12 @@ public class AdminService {
                         CreditRate rate = log.getModelId() != null ? creditRatesMap.get(log.getModelId()) : null;
                         double inMult = (rate != null && rate.getInputMultiplier() != null) ? rate.getInputMultiplier().doubleValue() : 1.0;
                         double outMult = (rate != null && rate.getOutputMultiplier() != null) ? rate.getOutputMultiplier().doubleValue() : 2.0;
-                        double credits = (currIn * inMult / 1000.0) + (currOut * outMult / 1000.0);
+                        double credits = (currIn * inMult) + (currOut * outMult);
 
                         row.put("totalInputTokens", currIn);
                         row.put("totalOutputTokens", currOut);
                         row.put("totalTokens", totalTok);
-                        row.put("totalCredits", Math.round(credits * 1000.0) / 1000.0);
+                        row.put("totalCredits", Math.round(credits * 100.0) / 100.0);
                     }
 
                     List<Map<String, Object>> aggregatedList = new ArrayList<>(aggMap.values());
