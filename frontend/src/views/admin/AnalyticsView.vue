@@ -347,7 +347,7 @@ async function loadData() {
     if (endDate.value) params.endDate = endDate.value
 
     const res = await adminApi.getAnalytics(params)
-    analyticsData.value = res.data || []
+    analyticsData.value = Array.isArray(res.data) ? res.data : (res.data?.metrics || res.data?.items || [])
   } catch (e) {
     console.error('Failed to load analytics:', e)
   } finally {

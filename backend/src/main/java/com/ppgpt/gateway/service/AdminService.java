@@ -36,6 +36,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -403,30 +405,45 @@ public class AdminService {
 
         return entityTemplate.select(query, ChatLog.class)
                 .flatMap(log -> userRepository.findById(log.getUserId())
-                        .map(u -> Map.<String, Object>of(
-                                "id", log.getId(),
-                                "userId", log.getUserId(),
-                                "username", u.getUsername(),
-                                "modelId", log.getModelId(),
-                                "modelDisplayName", log.getModelDisplayName(),
-                                "sessionId", log.getSessionId(),
-                                "prompt", log.getPrompt(),
-                                "response", log.getResponse(),
-                                "createdAt", log.getCreatedAt()
-                        )))
+                        .map(User::getUsername)
+                        .defaultIfEmpty("Unknown User")
+                        .map(uname -> {
+                            Map<String, Object> map = new HashMap<>();
+                            map.put("id", log.getId() != null ? log.getId() : "");
+                            map.put("userId", log.getUserId() != null ? log.getUserId() : "");
+                            map.put("username", uname);
+                            map.put("modelId", log.getModelId() != null ? log.getModelId() : "");
+                            map.put("modelDisplayName", log.getModelDisplayName() != null ? log.getModelDisplayName() : log.getModelId());
+                            map.put("sessionId", log.getSessionId() != null ? log.getSessionId() : "");
+                            map.put("prompt", log.getPrompt() != null ? log.getPrompt() : "");
+                            map.put("response", log.getResponse() != null ? log.getResponse() : "");
+                            map.put("createdAt", log.getCreatedAt());
+                            return map;
+                        }))
                 .filter(item -> {
                     if (search == null || search.isBlank()) return true;
                     String uname = (String) item.get("username");
-                    return uname != null && uname.toLowerCase().contains(search.toLowerCase());
+                    String promptText = (String) item.get("prompt");
+                    String responseText = (String) item.get("response");
+                    String q = search.toLowerCase();
+                    return (uname != null && uname.toLowerCase().contains(q))
+                            || (promptText != null && promptText.toLowerCase().contains(q))
+                            || (responseText != null && responseText.toLowerCase().contains(q));
                 })
                 .collectList()
                 .flatMap(list -> entityTemplate.count(Query.query(finalCriteria), ChatLog.class)
-                        .map(total -> Map.<String, Object>of(
-                                "items", list,
-                                "total", total,
-                                "page", page,
-                                "size", size
-                        )));
+                        .map(total -> {
+                            int totalPages = size > 0 ? (int) Math.ceil((double) total / size) : 1;
+                            Map<String, Object> result = new HashMap<>();
+                            result.put("items", list);
+                            result.put("content", list);
+                            result.put("total", total);
+                            result.put("totalElements", total);
+                            result.put("totalPages", totalPages > 0 ? totalPages : 1);
+                            result.put("page", page);
+                            result.put("size", size);
+                            return result;
+                        }));
     }
 
     /**
@@ -441,19 +458,104 @@ public class AdminService {
         LocalDate end = endDate != null ? endDate : LocalDate.now(ZoneOffset.UTC);
 
         return dashboardMetricRepository.findByUsageDateBetween(start, end)
+                .flatMap(metric -> Mono.zip(
+                        userGroupRepository.findById(metric.getGroupId()).map(UserGroup::getGroupName).defaultIfEmpty("Default Group"),
+                        modelRepository.findById(metric.getModelId()).map(Model::getName).defaultIfEmpty(metric.getModelId())
+                ).map(tuple -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("id", metric.getId());
+                    item.put("groupId", metric.getGroupId());
+                    item.put("groupName", tuple.getT1());
+                    item.put("modelId", metric.getModelId());
+                    item.put("modelName", tuple.getT2());
+                    item.put("usageDate", metric.getUsageDate());
+                    item.put("totalInputTokens", metric.getTotalInputTokens());
+                    item.put("totalOutputTokens", metric.getTotalOutputTokens());
+                    item.put("totalTokens", metric.getTotalInputTokens() + metric.getTotalOutputTokens());
+                    item.put("totalCredits", (metric.getTotalInputTokens() + metric.getTotalOutputTokens()) * 0.001);
+                    return item;
+                }))
                 .collectList()
-                .flatMap(metrics -> {
-                    long totalInput = metrics.stream().mapToLong(DashboardMetric::getTotalInputTokens).sum();
-                    long totalOutput = metrics.stream().mapToLong(DashboardMetric::getTotalOutputTokens).sum();
+                .flatMap(metricsList -> {
+                    if (metricsList.isEmpty()) {
+                        // Fallback: Aggregate live metrics from chat_log if dashboard_metrics table is empty
+                        return aggregateLiveAnalyticsFromChatLogs(start, end);
+                    }
 
-                    return Mono.just(Map.<String, Object>of(
-                            "startDate", start,
-                            "endDate", end,
-                            "totalInputTokens", totalInput,
-                            "totalOutputTokens", totalOutput,
-                            "totalTokens", totalInput + totalOutput,
-                            "metrics", metrics
-                    ));
+                    long totalInput = metricsList.stream().mapToLong(m -> ((Number) m.get("totalInputTokens")).longValue()).sum();
+                    long totalOutput = metricsList.stream().mapToLong(m -> ((Number) m.get("totalOutputTokens")).longValue()).sum();
+
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("startDate", start);
+                    result.put("endDate", end);
+                    result.put("totalInputTokens", totalInput);
+                    result.put("totalOutputTokens", totalOutput);
+                    result.put("totalTokens", totalInput + totalOutput);
+                    result.put("metrics", metricsList);
+                    result.put("items", metricsList);
+                    return Mono.just(result);
+                });
+    }
+
+    private Mono<Map<String, Object>> aggregateLiveAnalyticsFromChatLogs(LocalDate start, LocalDate end) {
+        Criteria criteria = Criteria.where("created_at")
+                .greaterThanOrEquals(start.atStartOfDay())
+                .and("created_at").lessThanOrEquals(end.atTime(LocalTime.MAX));
+
+        return entityTemplate.select(Query.query(criteria), ChatLog.class)
+                .flatMap(log -> userRepository.findById(log.getUserId())
+                        .flatMap(u -> userGroupRepository.findById(u.getGroupId())
+                                .map(g -> Map.entry(g.getGroupName(), log)))
+                        .defaultIfEmpty(Map.entry("Default Group", log)))
+                .collectList()
+                .flatMap(entries -> {
+                    Map<String, Map<String, Object>> aggMap = new HashMap<>();
+
+                    for (Map.Entry<String, ChatLog> entry : entries) {
+                        String groupName = entry.getKey();
+                        ChatLog log = entry.getValue();
+                        String modelName = log.getModelDisplayName() != null ? log.getModelDisplayName() : log.getModelId();
+                        String key = groupName + "___" + modelName;
+
+                        long inputEst = log.getPrompt() != null ? log.getPrompt().length() / 4L : 0L;
+                        long outputEst = log.getResponse() != null ? log.getResponse().length() / 4L : 0L;
+
+                        Map<String, Object> row = aggMap.computeIfAbsent(key, k -> {
+                            Map<String, Object> m = new HashMap<>();
+                            m.put("groupId", "g-default");
+                            m.put("groupName", groupName);
+                            m.put("modelId", log.getModelId());
+                            m.put("modelName", modelName);
+                            m.put("totalInputTokens", 0L);
+                            m.put("totalOutputTokens", 0L);
+                            m.put("totalTokens", 0L);
+                            m.put("totalCredits", 0.0);
+                            return m;
+                        });
+
+                        long currIn = ((Number) row.get("totalInputTokens")).longValue() + inputEst;
+                        long currOut = ((Number) row.get("totalOutputTokens")).longValue() + outputEst;
+                        long totalTok = currIn + currOut;
+
+                        row.put("totalInputTokens", currIn);
+                        row.put("totalOutputTokens", currOut);
+                        row.put("totalTokens", totalTok);
+                        row.put("totalCredits", totalTok * 0.001);
+                    }
+
+                    List<Map<String, Object>> metricsList = new ArrayList<>(aggMap.values());
+                    long totalInput = metricsList.stream().mapToLong(m -> ((Number) m.get("totalInputTokens")).longValue()).sum();
+                    long totalOutput = metricsList.stream().mapToLong(m -> ((Number) m.get("totalOutputTokens")).longValue()).sum();
+
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("startDate", start);
+                    result.put("endDate", end);
+                    result.put("totalInputTokens", totalInput);
+                    result.put("totalOutputTokens", totalOutput);
+                    result.put("totalTokens", totalInput + totalOutput);
+                    result.put("metrics", metricsList);
+                    result.put("items", metricsList);
+                    return Mono.just(result);
                 });
     }
 

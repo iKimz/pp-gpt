@@ -251,9 +251,9 @@ async function loadLogs() {
       endDate: endDate.value || undefined,
     }
     const res = (await adminApi.getAuditLogs(params)).data
-    logs.value          = res.content || []
-    totalPages.value    = res.totalPages || 1
-    totalElements.value = res.totalElements || 0
+    logs.value          = res.content || res.items || []
+    totalPages.value    = res.totalPages || Math.max(1, Math.ceil((res.total || res.totalElements || 0) / size))
+    totalElements.value = res.totalElements || res.total || 0
   } finally {
     loading.value = false
   }
