@@ -126,6 +126,15 @@
 
         <!-- Advanced JSON Schema Mode -->
         <template v-else>
+          <div class="p-3 bg-purple-50/70 border border-purple-200 rounded-xl space-y-1 text-purple-950">
+            <p class="font-bold flex items-center gap-1.5 text-xs">
+              <span>💡</span> Custom Headers in JSON Schema
+            </p>
+            <p class="text-[11px] leading-relaxed text-purple-900">
+              Add a <code>"headers"</code> property object under <code>"properties"</code> with a <code>"default"</code> map containing your key-value headers.
+            </p>
+          </div>
+
           <div>
             <label class="block font-semibold text-gray-700 mb-1">Tool Name *</label>
             <input
@@ -152,8 +161,8 @@
             <label class="block font-semibold text-gray-700 mb-1">JSON Input Schema (OpenAI Spec)</label>
             <textarea
               v-model="form.inputSchema"
-              rows="8"
-              placeholder='{"type":"object","properties":{...}}'
+              rows="10"
+              placeholder='{\n  "type": "object",\n  "properties": {\n    "method": { "type": "string", "default": "POST" },\n    "path": { "type": "string", "default": "/api/v1/payments" },\n    "headers": {\n      "type": "object",\n      "default": {\n        "X-Tenant-Id": "tenant_001"\n      }\n    }\n  }\n}'
               class="w-full px-3 py-2 bg-[#f8f7fa] border border-[#e8e7f1] rounded-xl focus:outline-none focus:border-[#ffd700] text-xs font-mono leading-relaxed"
             ></textarea>
           </div>
@@ -205,7 +214,7 @@ const restForm = reactive({
   method: 'POST',
   path: '/api/v1/payments',
   samplePayload: '{\n  "amount": 100,\n  "currency": "THB"\n}',
-  customHeaders: ''
+  customHeaders: '{\n  "X-Tenant-Id": "tenant_001"\n}'
 })
 
 watch(() => props.show, (val) => {
@@ -215,7 +224,7 @@ watch(() => props.show, (val) => {
     restForm.method = 'POST'
     restForm.path = '/api/v1/payments'
     restForm.samplePayload = '{\n  "amount": 100,\n  "currency": "THB"\n}'
-    restForm.customHeaders = ''
+    restForm.customHeaders = '{\n  "X-Tenant-Id": "tenant_001"\n}'
     updateRestSchema()
   }
 })
