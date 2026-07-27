@@ -457,32 +457,41 @@ public class McpServerService {
                         spec.header("Authorization", "Bearer " + rawToken);
                     }
 
-                    Map<String, Object> jsonRpcBody = Map.of(
-                            "jsonrpc", "2.0",
-                            "method", "tools/call",
-                            "params", Map.of(
-                                    "name", finalToolName,
-                                    "arguments", arguments != null ? arguments : Map.of()
-                            ),
-                            "id", 1
-                    );
+                    Object postBody;
+                    if ("NON_MCP_REST".equals(server.getCapabilityStatus())) {
+                        postBody = arguments != null ? arguments : Map.of();
+                    } else {
+                        postBody = Map.of(
+                                "jsonrpc", "2.0",
+                                "method", "tools/call",
+                                "params", Map.of(
+                                        "name", finalToolName,
+                                        "arguments", arguments != null ? arguments : Map.of()
+                                ),
+                                "id", 1
+                        );
+                    }
 
-                    return spec.bodyValue(jsonRpcBody)
+                    return spec.bodyValue(postBody)
                             .retrieve()
                             .bodyToFlux(String.class)
                             .collectList()
                             .map(lines -> String.join("\n", lines))
                             .timeout(Duration.ofSeconds(5))
                             .flatMap(rawBody -> {
-                                Map<String, Object> resp = parseJsonResponse(rawBody);
-                                Map<String, Object> result = (Map<String, Object>) resp.get("result");
-                                if (result != null && result.containsKey("content")) {
-                                    List<Map<String, Object>> contentList = (List<Map<String, Object>>) result.get("content");
-                                    if (contentList != null && !contentList.isEmpty()) {
-                                        String text = (String) contentList.get(0).get("text");
-                                        if (text != null) return Mono.just(text);
+                                try {
+                                    Map<String, Object> resp = parseJsonResponse(rawBody);
+                                    if (resp != null && resp.containsKey("result")) {
+                                        Map<String, Object> result = (Map<String, Object>) resp.get("result");
+                                        if (result != null && result.containsKey("content")) {
+                                            List<Map<String, Object>> contentList = (List<Map<String, Object>>) result.get("content");
+                                            if (contentList != null && !contentList.isEmpty()) {
+                                                String text = (String) contentList.get(0).get("text");
+                                                if (text != null) return Mono.just(text);
+                                            }
+                                        }
                                     }
-                                }
+                                } catch (Exception ignored) {}
                                 return Mono.just(rawBody);
                             })
                             .onErrorResume(e -> Mono.empty());
