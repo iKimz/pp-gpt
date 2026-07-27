@@ -300,7 +300,28 @@ class LocalMcpHandler(BaseHTTPRequestHandler):
         method = req.get("method")
         msg_id = req.get("id")
 
-        if method == "tools/list":
+        if method == "initialize":
+            response = {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {},
+                        "resources": {},
+                        "prompts": {}
+                    },
+                    "serverInfo": {
+                        "name": "Local MCP Mock Server",
+                        "version": "1.0.0"
+                    }
+                }
+            }
+            self._set_headers(200)
+            self.wfile.write(json.dumps(response).encode('utf-8'))
+            return
+
+        elif method == "tools/list":
             response = {
                 "jsonrpc": "2.0",
                 "id": msg_id,

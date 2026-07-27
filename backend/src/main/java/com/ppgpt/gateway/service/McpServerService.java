@@ -164,6 +164,10 @@ public class McpServerService {
                 .oauthClientSecretEncrypted(encryptedClientSecret)
                 .description(request.getDescription())
                 .isActive(request.getIsActive() != null ? request.getIsActive() : true)
+                .supportsTools(true)
+                .supportsResources(false)
+                .supportsPrompts(false)
+                .capabilityStatus("DISCOVERED")
                 .createdAt(LocalDateTime.now())
                 .newEntity(true)
                 .build();
@@ -538,7 +542,7 @@ public class McpServerService {
                             Map<String, Object> result = (Map<String, Object>) resp.get("result");
                             if (result != null && result.containsKey("capabilities")) {
                                 Map<String, Object> caps = (Map<String, Object>) result.get("capabilities");
-                                server.setSupportsTools(caps != null && caps.containsKey("tools"));
+                                server.setSupportsTools(caps == null || caps.containsKey("tools"));
                                 server.setSupportsResources(caps != null && caps.containsKey("resources"));
                                 server.setSupportsPrompts(caps != null && caps.containsKey("prompts"));
                                 server.setCapabilityStatus("DISCOVERED");
@@ -548,7 +552,9 @@ public class McpServerService {
                     } catch (Exception e) {
                         log.debug("[MCP Handshake] Failed to parse initialize response for '{}'", server.getName());
                     }
-                    return Mono.just(server);
+                    server.setSupportsTools(true);
+                    server.setCapabilityStatus("DISCOVERED");
+                    return mcpServerRepository.save(server);
                 })
                 .onErrorResume(e -> {
                     log.info("[MCP Handshake] Server '{}' does not respond to 'initialize' (might be legacy REST or unsupported protocol).", server.getName());
