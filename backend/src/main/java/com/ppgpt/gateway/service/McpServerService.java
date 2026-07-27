@@ -22,6 +22,8 @@ import com.ppgpt.gateway.repository.McpToolRepository;
 import com.ppgpt.gateway.util.JsonUtil;
 import com.ppgpt.gateway.util.McpConstants;
 import com.ppgpt.gateway.util.SecuritySanitizerUtil;
+import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -1133,22 +1135,45 @@ public class McpServerService {
                         errorResult.put("targetUrl", finalTargetUrl);
                         errorResult.put("method", finalMethod);
                         errorResult.put("durationMs", duration);
-
-                        String errorMsg = e.getMessage() != null ? e.getMessage() : e.toString();
-                        if (e.getCause() != null && e.getCause().getMessage() != null) {
-                            errorMsg = e.getCause().getMessage();
-                        }
-
-                        if (finalTargetUrl.contains("host.docker.internal")) {
-                            errorMsg = "DNS Resolution Failed for 'host.docker.internal' (" + errorMsg + "). "
-                                    + "If running in Docker on Linux, ensure 'extra_hosts: [\"host.docker.internal:host-gateway\"]' is set in docker-compose.yml, "
-                                    + "or update the Endpoint URL to use an accessible IP/domain.";
-                        }
-
-                        errorResult.put("error", errorMsg);
+                        errorResult.put("error", extractExceptionDetails(e, finalTargetUrl));
                         return Mono.just(errorResult);
                     });
                 });
+    }
+
+    private String extractExceptionDetails(Throwable e, String targetUrl) {
+        Throwable root = e;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+
+        String msg = root.getMessage() != null ? root.getMessage() : root.getClass().getSimpleName();
+
+        if (root instanceof UnknownHostException || msg.contains("UnknownHostException") || msg.contains("name resolution")) {
+            String host = "target host";
+            try {
+                URI uri = URI.create(targetUrl);
+                if (uri.getHost() != null) {
+                    host = uri.getHost();
+                }
+            } catch (Exception ignored) {}
+
+            String advice = host.equals("host.docker.internal")
+                    ? " (If running in Linux Docker, ensure 'extra_hosts: [\"host.docker.internal:host-gateway\"]' is set in docker-compose.yml, or use an accessible IP/domain)"
+                    : "";
+
+            return String.format("DNS Resolution Failed: Unable to resolve hostname '%s'%s.", host, advice);
+        }
+
+        if (msg.contains("Connection refused") || msg.contains("finishConnect")) {
+            return String.format("Connection Refused: Unable to connect to '%s'. Verify that target service is running.", targetUrl);
+        }
+
+        if (msg.contains("Timeout") || msg.contains("ReadTimeoutException")) {
+            return String.format("Connection Timeout: Target server '%s' did not respond in time.", targetUrl);
+        }
+
+        return msg;
     }
 
     /**
