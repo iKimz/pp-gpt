@@ -295,7 +295,11 @@ async function openMcpToolsModal(group) {
   mcpLoading.value = true
   try {
     const { data } = await adminApi.getGroupMcpTools(group.id)
-    mcpToolsList.value = data
+    mcpToolsList.value = data.map(t => ({
+      ...t,
+      isEnabledForGroup: t.isEnabledForGroup ?? t.enabledForGroup ?? true,
+      isAvailable: t.isAvailable ?? t.available ?? true
+    }))
   } catch (e) {
     alert('Failed to load MCP tool access list')
   } finally {
@@ -306,15 +310,17 @@ async function openMcpToolsModal(group) {
 function selectAllTools(enable) {
   for (const tool of mcpToolsList.value) {
     tool.isEnabledForGroup = enable
+    tool.enabledForGroup = enable
   }
 }
 
 function toggleServerTools(serverName) {
   const tools = groupedTools.value[serverName]
   if (!tools) return
-  const allEnabled = tools.every(t => t.isEnabledForGroup)
+  const allEnabled = tools.every(t => (t.isEnabledForGroup ?? t.enabledForGroup))
   for (const t of tools) {
     t.isEnabledForGroup = !allEnabled
+    t.enabledForGroup = !allEnabled
   }
 }
 
@@ -324,10 +330,11 @@ async function saveMcpToolAccess() {
   try {
     const updates = mcpToolsList.value.map(t => ({
       mcpToolId: t.id,
-      isEnabled: t.isEnabledForGroup
+      isEnabled: t.isEnabledForGroup ?? t.enabledForGroup ?? true
     }))
     await adminApi.updateGroupMcpTools(selectedGroup.value.id, updates)
     showMcpModal.value = false
+    alert(`✅ Tool access matrix for group '${selectedGroup.value.groupName}' saved successfully!`)
   } catch (e) {
     alert(e.response?.data?.message || 'Failed to save MCP tool access settings')
   } finally {

@@ -1,5 +1,6 @@
 package com.ppgpt.gateway.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,9 +20,15 @@ public class McpToolDto {
     private String namespacedName;
     private String description;
     private String inputSchema;
+
+    @JsonProperty("isAvailable")
     private boolean isAvailable;
+
     private int failedSyncCount;
+
+    @JsonProperty("isEnabledForGroup")
     private boolean isEnabledForGroup;
+
     private LocalDateTime lastSyncedAt;
     private LocalDateTime createdAt;
 }

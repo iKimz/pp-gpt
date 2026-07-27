@@ -261,12 +261,12 @@
                           <span
                             :class="[
                               'text-[9px] px-2 py-0.5 rounded-full font-semibold border shrink-0',
-                              tool.isAvailable
+                              (tool.isAvailable ?? tool.available)
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                 : 'bg-red-50 text-red-600 border-red-200'
                             ]"
                           >
-                            {{ tool.isAvailable ? '🟢 Available' : `⚠️ Retry ${tool.failedSyncCount}/3` }}
+                            {{ (tool.isAvailable ?? tool.available) ? '🟢 Available' : `⚠️ Retry ${tool.failedSyncCount}/3` }}
                           </span>
                         </div>
                         <p class="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
@@ -497,50 +497,110 @@
     <!-- Manual Tool Add Modal -->
     <div v-if="showManualModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
       <div class="bg-white rounded-2xl max-w-lg w-full border border-[#e8e7f1] shadow-2xl p-6 relative">
-        <h3 class="text-base font-bold text-[#1a1b22] font-heading mb-1 flex items-center gap-2">
-          <span>➕ Add Tool Manually</span>
-          <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-normal border border-amber-200">Legacy REST Fallback</span>
-        </h3>
-        <p class="text-xs text-gray-400 mb-4">Add custom tool definitions for non-MCP or REST endpoints without tools/list protocol support.</p>
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#e8e7f1]">
+          <div>
+            <h3 class="text-base font-bold text-[#1a1b22] font-heading flex items-center gap-2">
+              <span>➕ Add Tool Manually</span>
+              <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium border border-amber-200">Legacy REST Fallback</span>
+            </h3>
+            <p class="text-xs text-gray-400 mt-0.5">Define custom tool capabilities for REST endpoints without tools/list protocol support.</p>
+          </div>
+          <button @click="showManualModal = false" class="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 font-bold text-sm flex items-center justify-center">&times;</button>
+        </div>
 
         <form @submit.prevent="saveManualTool" class="space-y-4 text-xs">
+          <!-- Tool Name with Hint -->
           <div>
-            <label class="block font-medium text-gray-700 mb-1">Tool Name *</label>
+            <div class="flex items-center justify-between mb-1">
+              <label class="font-medium text-gray-700">Tool Identifier / Name *</label>
+              <span class="text-[10px] text-gray-400 font-mono">e.g. check_order_status</span>
+            </div>
             <input
               v-model="manualForm.toolName"
               type="text"
               required
-              placeholder="e.g. get_user_profile"
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono"
+              placeholder="check_order_status"
+              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-xs"
             />
+            <p class="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+              <span>💡</span>
+              <span>Namespacing prefix will be prepended automatically (e.g. <code class="font-mono text-blue-600 bg-blue-50 px-1 py-0.5 rounded">server_name__tool_name</code>).</span>
+            </p>
           </div>
 
+          <!-- Description with Hint -->
           <div>
-            <label class="block font-medium text-gray-700 mb-1">Description *</label>
+            <label class="block font-medium text-gray-700 mb-1">Function Description for LLM *</label>
             <textarea
               v-model="manualForm.description"
               rows="2"
               required
-              placeholder="Describe what this tool accomplishes for the LLM..."
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
+              placeholder="Describe what this tool does, when to call it, and what it returns..."
+              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] text-xs leading-relaxed"
             />
+            <p class="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+              <span>💡</span>
+              <span>LLMs read this prompt to decide when to automatically trigger this function.</span>
+            </p>
           </div>
 
+          <!-- Input Schema with Presets & Realtime Validator -->
           <div>
-            <label class="block font-medium text-gray-700 mb-1">Input Schema (JSON)</label>
+            <div class="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+              <label class="font-medium text-gray-700">JSON Input Schema (Parameters)</label>
+              <!-- Realtime Validation Badge -->
+              <span
+                :class="[
+                  'text-[10px] font-semibold px-2 py-0.5 rounded-full border',
+                  isManualSchemaValid
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-red-50 text-red-600 border-red-200'
+                ]"
+              >
+                {{ isManualSchemaValid ? '✅ Valid JSON Schema' : '❌ Invalid JSON Syntax' }}
+              </span>
+            </div>
+
+            <!-- Preset Buttons -->
+            <div class="flex items-center gap-1.5 mb-2 flex-wrap text-[10px]">
+              <span class="text-gray-400 font-medium">Quick Presets:</span>
+              <button
+                type="button"
+                @click="applySchemaPreset('EMPTY')"
+                class="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors border border-gray-200"
+              >
+                ⚡ No Parameters ({})
+              </button>
+              <button
+                type="button"
+                @click="applySchemaPreset('QUERY')"
+                class="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md transition-colors border border-blue-200"
+              >
+                📝 Single Text (query)
+              </button>
+              <button
+                type="button"
+                @click="applySchemaPreset('ID_LIMIT')"
+                class="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md transition-colors border border-purple-200"
+              >
+                🔢 ID & Limit Params
+              </button>
+            </div>
+
             <textarea
               v-model="manualForm.inputSchema"
-              rows="4"
+              rows="5"
               placeholder='{"type":"object","properties":{"user_id":{"type":"string"}},"required":["user_id"]}'
-              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px]"
+              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px] leading-snug"
             />
           </div>
 
-          <div class="flex justify-end gap-2 pt-2 border-t border-[#e8e7f1]">
+          <!-- Buttons -->
+          <div class="flex justify-end gap-2 pt-3 border-t border-[#e8e7f1]">
             <button @click="showManualModal = false" type="button" class="px-4 py-2 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl font-medium">
               Cancel
             </button>
-            <button :disabled="savingManual" type="submit" class="px-4 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] font-semibold rounded-xl shadow-sm disabled:opacity-50">
+            <button :disabled="savingManual || !isManualSchemaValid" type="submit" class="px-5 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] font-semibold rounded-xl shadow-sm disabled:opacity-50 transition-all">
               {{ savingManual ? 'Saving Tool...' : 'Save Manual Tool' }}
             </button>
           </div>
@@ -584,9 +644,29 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { adminApi } from '@/api/admin'
 import apiClient from '@/api/client'
+
+const isManualSchemaValid = computed(() => {
+  if (!manualForm.value.inputSchema || !manualForm.value.inputSchema.trim()) return true
+  try {
+    const parsed = JSON.parse(manualForm.value.inputSchema)
+    return typeof parsed === 'object' && parsed !== null
+  } catch (e) {
+    return false
+  }
+})
+
+function applySchemaPreset(presetType) {
+  if (presetType === 'EMPTY') {
+    manualForm.value.inputSchema = '{\n  "type": "object",\n  "properties": {}\n}'
+  } else if (presetType === 'QUERY') {
+    manualForm.value.inputSchema = '{\n  "type": "object",\n  "properties": {\n    "input_query": {\n      "type": "string",\n      "description": "Target search query or string"\n    }\n  },\n  "required": ["input_query"]\n}'
+  } else if (presetType === 'ID_LIMIT') {
+    manualForm.value.inputSchema = '{\n  "type": "object",\n  "properties": {\n    "user_id": {\n      "type": "string",\n      "description": "Target user ID"\n    },\n    "limit": {\n      "type": "integer",\n      "description": "Maximum number of records"\n    }\n  },\n  "required": ["user_id"]\n}'
+  }
+}
 
 const servers = ref([])
 const loading = ref(false)
