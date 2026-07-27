@@ -270,6 +270,18 @@ watch(() => props.show, (val) => {
         if (propsObj.headers && propsObj.headers.default) {
           restForm.customHeaders = JSON.stringify(propsObj.headers.default, null, 2)
         }
+        if (propsObj.payload) {
+          if (propsObj.payload.default) {
+            restForm.samplePayload = JSON.stringify(propsObj.payload.default, null, 2)
+          } else if (propsObj.payload.properties) {
+            const reconstructed = {}
+            Object.keys(propsObj.payload.properties).forEach(k => {
+              const f = propsObj.payload.properties[k]
+              reconstructed[k] = f.default !== undefined ? f.default : 'sample_value'
+            })
+            restForm.samplePayload = JSON.stringify(reconstructed, null, 2)
+          }
+        }
       } catch (e) {}
     } else {
       form.toolName = 'process_payment'
@@ -359,6 +371,9 @@ function updateRestSchema() {
 }
 
 function handleSubmit() {
+  if (activeMode.value === 'REST_FORM') {
+    updateRestSchema()
+  }
   emit('save', { ...form })
 }
 
