@@ -296,15 +296,27 @@ function updateRestSchema() {
         const propsObj = {}
         Object.keys(parsed).forEach(key => {
           const val = parsed[key]
-          const valType = typeof val === 'number' ? 'number' : typeof val === 'boolean' ? 'boolean' : 'string'
-          propsObj[key] = {
-            type: valType,
-            description: `Field ${key}`
+          if (Array.isArray(val)) {
+            propsObj[key] = {
+              type: 'array',
+              items: { type: typeof (val[0] ?? '') === 'number' ? 'number' : 'string' },
+              default: val,
+              description: `Array field ${key}`
+            }
+          } else if (typeof val === 'number') {
+            propsObj[key] = { type: 'number', default: val, description: `Field ${key}` }
+          } else if (typeof val === 'boolean') {
+            propsObj[key] = { type: 'boolean', default: val, description: `Field ${key}` }
+          } else if (typeof val === 'object' && val !== null) {
+            propsObj[key] = { type: 'object', default: val, description: `Object field ${key}` }
+          } else {
+            propsObj[key] = { type: 'string', default: String(val), description: `Field ${key}` }
           }
         })
         payloadSchema = {
           type: 'object',
-          properties: propsObj
+          properties: propsObj,
+          default: parsed
         }
       }
     } catch (e) {}

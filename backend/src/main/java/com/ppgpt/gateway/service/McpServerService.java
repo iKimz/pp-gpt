@@ -25,6 +25,8 @@ import com.ppgpt.gateway.util.SecuritySanitizerUtil;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
@@ -1079,18 +1081,33 @@ public class McpServerService {
                                     }
                                 }
 
-                                if (properties.has("payload") && properties.get("payload").has("properties")) {
-                                    Map<String, Object> sampleParams = new HashMap<>();
-                                    JsonNode payloadProps = properties.get("payload").get("properties");
-                                    payloadProps.fieldNames().forEachRemaining(key -> {
-                                        JsonNode field = payloadProps.get(key);
-                                        if (field.has("default")) {
-                                            sampleParams.put(key, field.get("default").asText());
-                                        } else {
-                                            sampleParams.put(key, "sample_value");
-                                        }
-                                    });
-                                    postBody = sampleParams;
+                                if (properties.has("payload")) {
+                                    JsonNode payloadNode = properties.get("payload");
+                                    if (payloadNode.has("default")) {
+                                        try {
+                                            postBody = objectMapper.treeToValue(payloadNode.get("default"), Object.class);
+                                        } catch (Exception ignored) {}
+                                    }
+
+                                    if (postBody == null && payloadNode.has("properties")) {
+                                        Map<String, Object> sampleParams = new HashMap<>();
+                                        JsonNode payloadProps = payloadNode.get("properties");
+                                        payloadProps.fieldNames().forEachRemaining(key -> {
+                                            JsonNode field = payloadProps.get(key);
+                                            if (field.has("default")) {
+                                                try {
+                                                    sampleParams.put(key, objectMapper.treeToValue(field.get("default"), Object.class));
+                                                } catch (Exception e) {
+                                                    sampleParams.put(key, field.get("default").asText());
+                                                }
+                                            } else if (field.has("type") && "array".equalsIgnoreCase(field.get("type").asText())) {
+                                                sampleParams.put(key, List.of("sample_value"));
+                                            } else {
+                                                sampleParams.put(key, "sample_value");
+                                            }
+                                        });
+                                        postBody = sampleParams;
+                                    }
                                 }
                             }
                         } catch (Exception e) {
