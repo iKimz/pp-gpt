@@ -478,91 +478,135 @@ public class McpServerService {
                     return cleanName.equals(finalPrefix) || server.getName().equalsIgnoreCase(finalPrefix);
                 })
                 .flatMap(server -> {
-                    HttpMethod httpMethod = HttpMethod.POST;
-                    String targetUrl = server.getEndpointUrl();
+                    boolean isLegacyRest = McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus());
 
-                    if (McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus())) {
-                        String customMethod = (arguments != null && arguments.containsKey("method"))
-                                ? String.valueOf(arguments.get("method"))
-                                : "POST";
-                        try {
-                            httpMethod = HttpMethod.valueOf(customMethod.toUpperCase());
-                        } catch (Exception e) {
-                            httpMethod = HttpMethod.POST;
-                        }
+                    return mcpToolRepository.findByMcpServerId(server.getId())
+                            .filter(tool -> tool.getToolName().equalsIgnoreCase(finalToolName)
+                                    || tool.getNamespacedName().equalsIgnoreCase(namespacedOrToolName))
+                            .next()
+                            .defaultIfEmpty(new McpTool())
+                            .flatMap(mcpTool -> {
+                                HttpMethod httpMethod = HttpMethod.POST;
+                                String targetUrl = server.getEndpointUrl();
+                                Map<String, String> customHeaders = new HashMap<>();
 
-                        if (arguments != null && arguments.containsKey("path")) {
-                            String subPath = String.valueOf(arguments.get("path"));
-                            if (subPath != null && subPath.startsWith("/")) {
-                                if (!targetUrl.endsWith(subPath)) {
-                                    targetUrl = targetUrl.replaceAll("/+$", "") + subPath;
-                                }
-                            }
-                        }
-                    }
+                                if (isLegacyRest) {
+                                    String inputSchemaStr = mcpTool.getInputSchema();
+                                    if (inputSchemaStr != null && !inputSchemaStr.isBlank()) {
+                                        try {
+                                            JsonNode schemaNode = objectMapper.readTree(inputSchemaStr);
+                                            JsonNode properties = schemaNode.get("properties");
+                                            if (properties != null && properties.isObject()) {
+                                                if (properties.has("method") && properties.get("method").has("default")) {
+                                                    String methodStr = properties.get("method").get("default").asText("POST");
+                                                    try {
+                                                        httpMethod = HttpMethod.valueOf(methodStr.toUpperCase());
+                                                    } catch (Exception ignored) {}
+                                                }
 
-                    WebClient.RequestBodySpec spec = aiWebClient.method(httpMethod)
-                            .uri(targetUrl)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .header("Accept", "application/json, text/event-stream");
+                                                if (properties.has("path") && properties.get("path").has("default")) {
+                                                    String subPath = properties.get("path").get("default").asText("");
+                                                    if (subPath != null && subPath.startsWith("/")) {
+                                                        targetUrl = targetUrl.replaceAll("/+$", "") + subPath;
+                                                    }
+                                                }
 
-                    applyAuthHeaders(spec, server);
-
-                    if (McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus())) {
-                        if (arguments != null && arguments.get("headers") instanceof Map<?, ?> customHeaders) {
-                            spec.headers(httpHeaders -> {
-                                for (Map.Entry<?, ?> entry : customHeaders.entrySet()) {
-                                    if (entry.getKey() != null && entry.getValue() != null) {
-                                        httpHeaders.set(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
-                                    }
-                                }
-                            });
-                        }
-                    }
-
-                    Object postBody = null;
-                    if (McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus())) {
-                        if (httpMethod != HttpMethod.GET) {
-                            postBody = arguments != null ? arguments : Map.of();
-                        }
-                    } else {
-                        postBody = Map.of(
-                                "jsonrpc", "2.0",
-                                "method", McpConstants.METHOD_TOOLS_CALL,
-                                "params", Map.of(
-                                        "name", finalToolName,
-                                        "arguments", arguments != null ? arguments : Map.of()
-                                ),
-                                "id", 1
-                        );
-                    }
-
-                    WebClient.RequestHeadersSpec<?> headersSpec = (postBody != null) ? spec.bodyValue(postBody) : spec;
-
-                    return headersSpec.retrieve()
-                            .bodyToFlux(String.class)
-                            .collectList()
-                            .map(lines -> String.join("\n", lines))
-                            .timeout(Duration.ofSeconds(5))
-                            .flatMap(rawBody -> {
-                                try {
-                                    Map<String, Object> resp = parseJsonResponse(rawBody);
-                                    if (resp != null && resp.containsKey("result")) {
-                                        @SuppressWarnings("unchecked")
-                                        Map<String, Object> result = (Map<String, Object>) resp.get("result");
-                                        if (result != null && result.containsKey("content")) {
-                                            @SuppressWarnings("unchecked")
-                                            List<Map<String, Object>> contentList = (List<Map<String, Object>>) result.get("content");
-                                            if (contentList != null && !contentList.isEmpty()) {
-                                                String text = (String) contentList.get(0).get("text");
-                                                if (text != null) return Mono.just(text);
+                                                if (properties.has("headers") && properties.get("headers").has("default")) {
+                                                    JsonNode headersNode = properties.get("headers").get("default");
+                                                    if (headersNode != null && headersNode.isObject()) {
+                                                        headersNode.fieldNames().forEachRemaining(key -> {
+                                                            customHeaders.put(key, headersNode.get(key).asText());
+                                                        });
+                                                    }
+                                                }
                                             }
+                                        } catch (Exception e) {
+                                            log.warn("[Legacy REST Execute] Failed to parse inputSchema for tool {}: {}", namespacedOrToolName, e.getMessage());
                                         }
                                     }
-                                } catch (Exception ignored) {}
-                                return Mono.just(rawBody);
-                            })
-                            .onErrorResume(e -> Mono.empty());
+
+                                    if (arguments != null) {
+                                        if (arguments.containsKey("method")) {
+                                            try {
+                                                httpMethod = HttpMethod.valueOf(String.valueOf(arguments.get("method")).toUpperCase());
+                                            } catch (Exception ignored) {}
+                                        }
+                                        if (arguments.containsKey("path")) {
+                                            String subPath = String.valueOf(arguments.get("path"));
+                                            if (subPath != null && subPath.startsWith("/")) {
+                                                targetUrl = server.getEndpointUrl().replaceAll("/+$", "") + subPath;
+                                            }
+                                        }
+                                        if (arguments.get("headers") instanceof Map<?, ?> argHeaders) {
+                                            argHeaders.forEach((k, v) -> {
+                                                if (k != null && v != null) customHeaders.put(String.valueOf(k), String.valueOf(v));
+                                            });
+                                        }
+                                    }
+                                }
+
+                                WebClient.RequestBodySpec spec = aiWebClient.method(httpMethod)
+                                        .uri(targetUrl)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .header("Accept", "application/json, text/event-stream, text/plain, */*");
+
+                                applyAuthHeaders(spec, server);
+                                if (!customHeaders.isEmpty()) {
+                                    spec.headers(h -> customHeaders.forEach(h::set));
+                                }
+
+                                Object postBody = null;
+                                if (isLegacyRest) {
+                                    if (httpMethod != HttpMethod.GET) {
+                                        if (arguments != null && arguments.containsKey("payload")) {
+                                            postBody = arguments.get("payload");
+                                        } else {
+                                            postBody = arguments != null ? arguments : Map.of();
+                                        }
+                                    }
+                                } else {
+                                    postBody = Map.of(
+                                            "jsonrpc", "2.0",
+                                            "method", McpConstants.METHOD_TOOLS_CALL,
+                                            "params", Map.of(
+                                                    "name", finalToolName,
+                                                    "arguments", arguments != null ? arguments : Map.of()
+                                            ),
+                                            "id", 1
+                                    );
+                                }
+
+                                String finalTargetUrl = targetUrl;
+                                WebClient.RequestHeadersSpec<?> headersSpec = (postBody != null) ? spec.bodyValue(postBody) : spec;
+
+                                return headersSpec.retrieve()
+                                        .bodyToFlux(String.class)
+                                        .collectList()
+                                        .map(lines -> String.join("\n", lines))
+                                        .timeout(Duration.ofSeconds(30))
+                                        .flatMap(rawBody -> {
+                                            try {
+                                                Map<String, Object> resp = parseJsonResponse(rawBody);
+                                                if (resp != null && resp.containsKey("result")) {
+                                                    @SuppressWarnings("unchecked")
+                                                    Map<String, Object> result = (Map<String, Object>) resp.get("result");
+                                                    if (result != null && result.containsKey("content")) {
+                                                        @SuppressWarnings("unchecked")
+                                                        List<Map<String, Object>> contentList = (List<Map<String, Object>>) result.get("content");
+                                                        if (contentList != null && !contentList.isEmpty()) {
+                                                            String text = (String) contentList.get(0).get("text");
+                                                            if (text != null) return Mono.just(text);
+                                                        }
+                                                    }
+                                                }
+                                            } catch (Exception ignored) {}
+                                            return Mono.just(rawBody);
+                                        })
+                                        .onErrorResume(e -> {
+                                            log.error("[Tool Execution Failed] Tool '{}' failed: {}", namespacedOrToolName, e.getMessage(), e);
+                                            return Mono.just("{\"error\": \"Failed to execute tool '" + namespacedOrToolName + "': " + extractExceptionDetails(e, finalTargetUrl) + "\"}");
+                                        });
+                            });
                 })
                 .next()
                 .defaultIfEmpty("{\"error\": \"Tool '" + namespacedOrToolName + "' is currently unavailable or disabled by administrator.\"}");
