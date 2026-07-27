@@ -437,10 +437,11 @@ public class McpServerService {
                     return mcpToolRepository.findByIdInAndIsAvailableTrue(enabledToolIds)
                             .map(t -> {
                                 Map<String, Object> schemaMap = JsonUtil.parseJsonMap(t.getInputSchema());
+                                Map<String, Object> sanitizedSchema = sanitizeSchemaForLlm(schemaMap);
                                 ToolDto.FunctionDef funcDef = new ToolDto.FunctionDef(
                                         t.getNamespacedName(),
                                         t.getDescription() != null ? t.getDescription() : "",
-                                        schemaMap.isEmpty() ? Map.of("type", "object", "properties", Map.of()) : schemaMap
+                                        sanitizedSchema.isEmpty() ? Map.of("type", "object", "properties", Map.of()) : sanitizedSchema
                                 );
                                 return new ToolDto("function", funcDef);
                             });
@@ -559,11 +560,30 @@ public class McpServerService {
                             Object postBody = null;
                             if (isLegacyRest) {
                                 if (httpMethod != HttpMethod.GET) {
-                                    if (arguments != null && arguments.containsKey("payload")) {
-                                        postBody = normalizeRestPayload(arguments.get("payload"), mcpTool);
-                                    } else {
-                                        postBody = normalizeRestPayload(arguments != null ? arguments : Map.of(), mcpTool);
+                                    Map<String, Object> bodyMap = new HashMap<>();
+                                    if (arguments != null) {
+                                        if (arguments.get("payload") instanceof Map<?, ?> payloadMap) {
+                                            payloadMap.forEach((k, v) -> {
+                                                if (k != null && v != null) bodyMap.put(String.valueOf(k), v);
+                                            });
+                                        }
+
+                                        arguments.forEach((k, v) -> {
+                                            if (k != null && v != null) {
+                                                String key = String.valueOf(k);
+                                                if (!"method".equalsIgnoreCase(key) && !"path".equalsIgnoreCase(key)
+                                                        && !"headers".equalsIgnoreCase(key) && !"payload".equalsIgnoreCase(key)) {
+                                                    bodyMap.put(key, v);
+                                                }
+                                            }
+                                        });
                                     }
+
+                                    postBody = normalizeRestPayload(bodyMap, mcpTool);
+
+                                    try {
+                                        log.info("[Legacy REST Execute] Target URL: '{}', Clean Body JSON: {}", targetUrl, objectMapper.writeValueAsString(postBody));
+                                    } catch (Exception ignored) {}
                                 }
                             } else {
                                 postBody = Map.of(
@@ -1405,5 +1425,46 @@ public class McpServerService {
         }
 
         return normalized;
+    }
+
+    private Map<String, Object> sanitizeSchemaForLlm(Map<String, Object> schemaMap) {
+        if (schemaMap == null || schemaMap.isEmpty()) {
+            return Map.of("type", "object", "properties", Map.of());
+        }
+
+        try {
+            Map<String, Object> cleanSchema = new HashMap<>(schemaMap);
+            Object propsObj = cleanSchema.get("properties");
+
+            if (propsObj instanceof Map<?, ?> propsMap) {
+                Map<String, Object> cleanProps = new HashMap<>();
+
+                if (propsMap.containsKey("payload") && propsMap.get("payload") instanceof Map<?, ?> payloadMap) {
+                    Object subPropsObj = payloadMap.get("properties");
+                    if (subPropsObj instanceof Map<?, ?> subPropsMap) {
+                        for (Map.Entry<?, ?> entry : subPropsMap.entrySet()) {
+                            if (entry.getKey() != null && entry.getValue() != null) {
+                                cleanProps.put(String.valueOf(entry.getKey()), entry.getValue());
+                            }
+                        }
+                    }
+                }
+
+                for (Map.Entry<?, ?> entry : propsMap.entrySet()) {
+                    if (entry.getKey() == null) continue;
+                    String key = String.valueOf(entry.getKey());
+                    if ("method".equalsIgnoreCase(key) || "path".equalsIgnoreCase(key) || "headers".equalsIgnoreCase(key) || "payload".equalsIgnoreCase(key)) {
+                        continue;
+                    }
+                    cleanProps.put(key, entry.getValue());
+                }
+
+                cleanSchema.put("properties", cleanProps);
+            }
+
+            return cleanSchema;
+        } catch (Exception e) {
+            return schemaMap;
+        }
     }
 }
