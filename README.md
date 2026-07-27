@@ -14,7 +14,7 @@ A self-hosted, provider-agnostic AI gateway that proxies streaming LLM requests 
 - **Auto Reasoning Tag Sanitization** — Automatic stripping of `<think>` and `<reasoning>` tags for OSS/Reasoning models (DeepSeek, Qwen, Llama) to prevent in-context refusal loops
 - **Credit quota system** — Per-user daily credit limits enforced atomically via Redis Lua scripts, with MariaDB as durable source of truth
 - **Guardrail safety layer** — Optional per-group safety model that evaluates prompts before forwarding to the primary model
-- **Admin dashboard** — Full CRUD for models, user groups, credit rates, users, and MCP servers; paginated audit logs; executive analytics by group and model
+- **Admin dashboard** — Full CRUD for models, user groups, credit rates, users, and MCP servers; paginated null-safe audit logs; executive analytics with live fallback by group and model
 - **JWT authentication** — LOCAL (BCrypt password) and AZURE_AD (mock LDAP / JIT provisioning) auth sources
 - **AES-256-GCM credential encryption** — Provider API keys are encrypted at rest and never returned in API responses
 - **Conversation history** — Configurable sliding context window (`max_history_messages`) per model
@@ -52,14 +52,14 @@ A self-hosted, provider-agnostic AI gateway that proxies streaming LLM requests 
 com.ppgpt.gateway/
 ├── adapter/          # AI provider adapters (OpenAI, Azure, AWS Bedrock)
 ├── config/           # Spring configuration (WebClient, Redis, R2DBC)
-├── controller/       # REST controllers (Auth, Chat, Admin, Mcp)
+├── controller/       # REST controllers (Auth, Chat, Admin, Mcp, McpOAuth)
 ├── domain/           # R2DBC entity classes
 ├── dto/              # Request/Response DTOs
 ├── event/            # Spring application events (token usage → dashboard metrics)
 ├── repository/       # R2DBC reactive repositories
 ├── security/         # JWT provider, auth filter, security config
 ├── service/          # Business logic (Auth, Chat, Admin, Quota, Crypto, McpServer)
-└── util/             # TokenizerUtil (JTokkit BPE)
+└── util/             # Core utilities (JsonUtil, SecuritySanitizerUtil, McpConstants, TokenizerUtil)
 ```
 
 ---
@@ -212,8 +212,8 @@ The gateway implements a comprehensive, enterprise-grade Model Context Protocol 
 
 2. **Legacy REST & Manual Tool Fallback**:
    - Detects non-MCP REST endpoints and marks them as `⚠️ Legacy REST / Manual`.
-   - **➕ Manual Tool Creator**: Allows administrators to define custom JSON Input Schemas with pre-built UI quick presets (`⚡ No Parameters`, `📝 Single Text`, `🔢 ID & Limit`, `🌐 REST API Method/Path`) and real-time JSON syntax validation.
-   - **Dynamic HTTP Execution**: Supports dynamic HTTP methods (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`) and custom relative endpoint paths (`/api/v1/charge`) for standard `@RestController` endpoints.
+   - **🌐 Visual REST Builder**: Interactive REST form mode allowing administrators to configure HTTP methods (`POST`, `GET`, `PUT`, `DELETE`, `PATCH`), subpath endpoints (`/api/v1/payments`), sample JSON bodies, and custom HTTP headers (`X-Tenant-Id`, `X-Custom-Header`) with automatic JSON Schema compilation.
+   - **🛠️ Advanced JSON Schema Mode**: Raw JSON Schema editor for defining multi-parameter function schemas.
    - **📄 OpenAPI 3.0 Spec Importer**: Automatically parses raw JSON/YAML OpenAPI specifications, extracting paths, parameters, and request bodies into namespaced LLM tools.
    - **HTTP Endpoint Reachability Ping**: Regularly verifies legacy endpoint health, updating availability badges (`🟢 Available` vs `🔴 Unreachable`) while retaining manual tool definitions.
 
