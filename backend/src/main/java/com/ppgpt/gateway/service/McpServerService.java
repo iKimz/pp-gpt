@@ -1,21 +1,27 @@
 package com.ppgpt.gateway.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ppgpt.gateway.domain.GroupMcpToolAccess;
+import com.ppgpt.gateway.domain.McpPrompt;
+import com.ppgpt.gateway.domain.McpResource;
 import com.ppgpt.gateway.domain.McpServer;
 import com.ppgpt.gateway.domain.McpTool;
-import com.ppgpt.gateway.domain.McpResource;
-import com.ppgpt.gateway.domain.McpPrompt;
-import com.ppgpt.gateway.domain.GroupMcpToolAccess;
+import com.ppgpt.gateway.dto.CreateManualToolRequest;
 import com.ppgpt.gateway.dto.CreateMcpServerRequest;
+import com.ppgpt.gateway.dto.GroupToolAccessRequest;
 import com.ppgpt.gateway.dto.McpServerDto;
 import com.ppgpt.gateway.dto.McpToolDto;
-import com.ppgpt.gateway.dto.GroupToolAccessRequest;
-import com.ppgpt.gateway.dto.CreateManualToolRequest;
 import com.ppgpt.gateway.dto.OpenApiImportRequest;
+import com.ppgpt.gateway.dto.ToolDto;
+import com.ppgpt.gateway.repository.GroupMcpToolAccessRepository;
+import com.ppgpt.gateway.repository.McpPromptRepository;
+import com.ppgpt.gateway.repository.McpResourceRepository;
 import com.ppgpt.gateway.repository.McpServerRepository;
 import com.ppgpt.gateway.repository.McpToolRepository;
-import com.ppgpt.gateway.repository.McpResourceRepository;
-import com.ppgpt.gateway.repository.McpPromptRepository;
-import com.ppgpt.gateway.repository.GroupMcpToolAccessRepository;
+import com.ppgpt.gateway.util.JsonUtil;
+import com.ppgpt.gateway.util.McpConstants;
+import com.ppgpt.gateway.util.SecuritySanitizerUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
@@ -27,8 +33,6 @@ import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -41,6 +45,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * Service managing Model Context Protocol (MCP) server lifecycle, protocol capability discovery,
+ * dynamic OAuth2 metadata discovery, agentic tool execution, and Legacy REST manual tool fallbacks.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -58,10 +66,13 @@ public class McpServerService {
     private final WebClient aiWebClient;
     private final ObjectMapper objectMapper;
 
+    /**
+     * DTO representing discovered OAuth2 authorization, token, and dynamic registration metadata.
+     */
     public static class OAuthDiscoveryResult {
-        public String authorizeUrl;
-        public String tokenUrl;
-        public String registrationUrl;
+        public final String authorizeUrl;
+        public final String tokenUrl;
+        public final String registrationUrl;
 
         public OAuthDiscoveryResult(String authorizeUrl, String tokenUrl, String registrationUrl) {
             this.authorizeUrl = authorizeUrl;
@@ -70,9 +81,16 @@ public class McpServerService {
         }
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * Discovers OAuth2 metadata endpoints using RFC 9207 / RFC 8414 well-known metadata discovery.
+     *
+     * @param wwwAuthHeader Raw WWW-Authenticate header string from 401/403 HTTP response
+     * @return Mono emitting discovered OAuth endpoints or empty Mono
+     */
     private Mono<OAuthDiscoveryResult> discoverOAuthMetadata(String wwwAuthHeader) {
-        if (wwwAuthHeader == null || wwwAuthHeader.isBlank()) return Mono.empty();
+        if (wwwAuthHeader == null || wwwAuthHeader.isBlank()) {
+            return Mono.empty();
+        }
 
         // 1. Direct authorization_uri="https://..."
         Matcher authMatcher = AUTH_URI_PATTERN.matcher(wwwAuthHeader);
@@ -87,21 +105,25 @@ public class McpServerService {
             return aiWebClient.get()
                     .uri(metaUrl)
                     .retrieve()
-                    .bodyToMono(Map.class)
-                    .flatMap(meta -> {
-                        List<String> authServers = (List<String>) meta.get("authorization_servers");
+                    .bodyToMono(String.class)
+                    .flatMap(metaBody -> {
+                        Map<String, Object> meta = JsonUtil.parseJsonMap(metaBody);
+                        List<?> authServers = (List<?>) meta.get("authorization_servers");
                         if (authServers != null && !authServers.isEmpty()) {
-                            String authServerBase = authServers.get(0).replaceAll("/+$", "");
+                            String authServerBase = String.valueOf(authServers.get(0)).replaceAll("/+$", "");
                             String discoveryUrl = authServerBase + "/.well-known/oauth-authorization-server";
                             return aiWebClient.get()
                                     .uri(discoveryUrl)
                                     .retrieve()
-                                    .bodyToMono(Map.class)
-                                    .map(disc -> new OAuthDiscoveryResult(
-                                            (String) disc.get("authorization_endpoint"),
-                                            (String) disc.get("token_endpoint"),
-                                            (String) disc.get("registration_endpoint")
-                                    ));
+                                    .bodyToMono(String.class)
+                                    .map(discBody -> {
+                                        Map<String, Object> disc = JsonUtil.parseJsonMap(discBody);
+                                        return new OAuthDiscoveryResult(
+                                                (String) disc.get("authorization_endpoint"),
+                                                (String) disc.get("token_endpoint"),
+                                                (String) disc.get("registration_endpoint")
+                                        );
+                                    });
                         }
                         return Mono.empty();
                     })
@@ -114,9 +136,17 @@ public class McpServerService {
         return Mono.empty();
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * Executes RFC 7591 Dynamic Client Registration to register Gateway as an OAuth client.
+     *
+     * @param registrationUrl Registration endpoint URL
+     * @param redirectUri     Callback URL
+     * @return Mono emitting registered client_id or empty Mono
+     */
     private Mono<String> registerDynamicClient(String registrationUrl, String redirectUri) {
-        if (registrationUrl == null || registrationUrl.isBlank()) return Mono.empty();
+        if (registrationUrl == null || registrationUrl.isBlank()) {
+            return Mono.empty();
+        }
 
         Map<String, Object> regBody = Map.of(
                 "client_name", "pp-gpt Gateway",
@@ -130,19 +160,33 @@ public class McpServerService {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(regBody)
                 .retrieve()
-                .bodyToMono(Map.class)
-                .map(resp -> (String) resp.get("client_id"))
+                .bodyToMono(String.class)
+                .map(respBody -> {
+                    Map<String, Object> resp = JsonUtil.parseJsonMap(respBody);
+                    return (String) resp.get("client_id");
+                })
                 .onErrorResume(e -> {
                     log.warn("[MCP OAuth] Dynamic client registration at {} failed: {}", registrationUrl, e.getMessage());
                     return Mono.empty();
                 });
     }
 
+    /**
+     * Retrieves all registered MCP server definitions.
+     *
+     * @return Flux of MCP server DTOs
+     */
     public Flux<McpServerDto> getAllMcpServers() {
         return mcpServerRepository.findAll()
                 .map(this::toDto);
     }
 
+    /**
+     * Creates a new MCP server definition in database.
+     *
+     * @param request Create request containing endpoint URL, auth type, and credentials
+     * @return Mono emitting created MCP server DTO
+     */
     public Mono<McpServerDto> createMcpServer(CreateMcpServerRequest request) {
         String id = UUID.randomUUID().toString();
         String encryptedKey = (request.getApiKey() != null && !request.getApiKey().isBlank())
@@ -157,7 +201,7 @@ public class McpServerService {
                 .id(id)
                 .name(request.getName().trim())
                 .endpointUrl(request.getEndpointUrl().trim())
-                .authType(request.getAuthType() != null ? request.getAuthType() : "STATIC_KEY")
+                .authType(request.getAuthType() != null ? request.getAuthType() : McpConstants.AUTH_STATIC_KEY)
                 .apiKeyEncrypted(encryptedKey)
                 .oauthAuthorizeUrl(request.getOauthAuthorizeUrl())
                 .oauthTokenUrl(request.getOauthTokenUrl())
@@ -168,7 +212,7 @@ public class McpServerService {
                 .supportsTools(true)
                 .supportsResources(false)
                 .supportsPrompts(false)
-                .capabilityStatus("DISCOVERED")
+                .capabilityStatus(McpConstants.CAPABILITY_DISCOVERED)
                 .createdAt(LocalDateTime.now())
                 .newEntity(true)
                 .build();
@@ -177,6 +221,13 @@ public class McpServerService {
                 .map(this::toDto);
     }
 
+    /**
+     * Updates an existing MCP server configuration.
+     *
+     * @param id      Server ID
+     * @param request Update request payload
+     * @return Mono emitting updated MCP server DTO
+     */
     public Mono<McpServerDto> updateMcpServer(String id, CreateMcpServerRequest request) {
         return mcpServerRepository.findById(id)
                 .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
@@ -211,30 +262,31 @@ public class McpServerService {
                 .map(this::toDto);
     }
 
+    /**
+     * Deletes an MCP server and its associated definitions from database.
+     *
+     * @param id Server ID
+     * @return Mono completing upon deletion
+     */
     public Mono<Void> deleteMcpServer(String id) {
         return mcpServerRepository.deleteById(id);
     }
 
+    /**
+     * Tests connectivity to an MCP server, performing OAuth2 auto-discovery on 401/403 errors.
+     *
+     * @param id Server ID
+     * @return Mono emitting connection status map
+     */
     public Mono<Map<String, Object>> testConnection(String id) {
         return mcpServerRepository.findById(id)
                 .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
                 .flatMap(server -> {
-                    WebClient.RequestBodySpec spec = aiWebClient.post()
-                            .uri(server.getEndpointUrl())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .header("Accept", "application/json, text/event-stream");
-
-                    if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
-                        String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
-                        spec.header("Authorization", "Bearer " + rawKey);
-                    } else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
-                        String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
-                        spec.header("Authorization", "Bearer " + rawToken);
-                    }
+                    WebClient.RequestBodySpec spec = prepareRequestSpec(server);
 
                     Map<String, Object> jsonRpcBody = Map.of(
                             "jsonrpc", "2.0",
-                            "method", "tools/list",
+                            "method", McpConstants.METHOD_TOOLS_LIST,
                             "id", 1
                     );
 
@@ -250,12 +302,10 @@ public class McpServerService {
                                                 String tokenUrl = disc.tokenUrl;
                                                 String regUrl = disc.registrationUrl;
 
-                                                // Update server entity with discovered OAuth metadata
-                                                server.setAuthType("OAUTH2");
+                                                server.setAuthType(McpConstants.AUTH_OAUTH2);
                                                 if (authUrl != null) server.setOauthAuthorizeUrl(authUrl);
                                                 if (tokenUrl != null) server.setOauthTokenUrl(tokenUrl);
 
-                                                // Check if dynamic client registration is required
                                                 if ((server.getOauthClientId() == null || server.getOauthClientId().isBlank()) && regUrl != null) {
                                                     String redirectUri = "http://localhost/api/v1/mcp/oauth/callback";
                                                     return registerDynamicClient(regUrl, redirectUri)
@@ -311,7 +361,6 @@ public class McpServerService {
         return resMap;
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> parseJsonResponse(String rawBody) {
         if (rawBody == null || rawBody.isBlank()) return Collections.emptyMap();
         try {
@@ -325,13 +374,22 @@ public class McpServerService {
                     }
                 }
             }
-            return objectMapper.readValue(jsonStr, Map.class);
+            return JsonUtil.parseJsonMap(jsonStr);
         } catch (Exception e) {
             log.warn("Failed to parse MCP response JSON: {}", e.getMessage());
             return Collections.emptyMap();
         }
     }
 
+    /**
+     * Stores OAuth2 access and refresh tokens for an MCP server.
+     *
+     * @param serverId         Server ID
+     * @param accessToken      Decrypted access token string
+     * @param refreshToken     Decrypted refresh token string
+     * @param expiresInSeconds Lifetime in seconds
+     * @return Mono emitting updated MCP server DTO
+     */
     public Mono<McpServerDto> saveOAuthTokens(String serverId, String accessToken, String refreshToken, Long expiresInSeconds) {
         return mcpServerRepository.findById(serverId)
                 .flatMap(server -> {
@@ -350,86 +408,53 @@ public class McpServerService {
                 .map(this::toDto);
     }
 
-    @SuppressWarnings("unchecked")
-    public Flux<com.ppgpt.gateway.dto.ToolDto> getActiveTools() {
-        return mcpServerRepository.findByIsActiveTrue()
-                .flatMap(server -> {
-                    WebClient.RequestBodySpec spec = aiWebClient.post()
-                            .uri(server.getEndpointUrl())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .header("Accept", "application/json, text/event-stream");
+    /**
+     * Retrieves active, authorized MCP tools for a user group formatted as ToolDto.
+     *
+     * @param groupId User group ID
+     * @return Flux of ToolDto entities for LLM completion request
+     */
+    public Flux<ToolDto> getActiveToolsForGroup(String groupId) {
+        if (groupId == null || groupId.isBlank()) {
+            return Flux.empty();
+        }
 
-                    if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
-                        String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
-                        spec.header("Authorization", "Bearer " + rawKey);
-                    } else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
-                        String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
-                        spec.header("Authorization", "Bearer " + rawToken);
+        return groupMcpToolAccessRepository.findByGroupIdAndIsEnabledTrue(groupId)
+                .map(GroupMcpToolAccess::getMcpToolId)
+                .collectList()
+                .flatMapMany(enabledToolIds -> {
+                    if (enabledToolIds.isEmpty()) {
+                        return Flux.empty();
                     }
-
-                    Map<String, Object> jsonRpcBody = Map.of(
-                            "jsonrpc", "2.0",
-                            "method", "tools/list",
-                            "id", 1
-                    );
-
-                    return spec.bodyValue(jsonRpcBody)
-                            .retrieve()
-                            .bodyToFlux(String.class)
-                            .collectList()
-                            .map(lines -> String.join("\n", lines))
-                            .timeout(Duration.ofSeconds(3))
-                            .flatMapMany(rawBody -> {
-                                Map<String, Object> resp = parseJsonResponse(rawBody);
-                                Map<String, Object> result = (Map<String, Object>) resp.get("result");
-                                if (result != null && result.containsKey("tools")) {
-                                    List<Map<String, Object>> toolsList = (List<Map<String, Object>>) result.get("tools");
-                                    return Flux.fromIterable(toolsList)
-                                            .map(t -> new com.ppgpt.gateway.dto.ToolDto(
-                                                    "function",
-                                                    new com.ppgpt.gateway.dto.ToolDto.FunctionDef(
-                                                            (String) t.get("name"),
-                                                            (String) t.get("description"),
-                                                            (Map<String, Object>) t.get("inputSchema")
-                                                    )
-                                            ));
-                                }
-                                return Flux.empty();
-                            })
-                            .onErrorResume(e -> Flux.empty());
+                    return mcpToolRepository.findByIdInAndIsAvailableTrue(enabledToolIds)
+                            .map(t -> {
+                                Map<String, Object> schemaMap = JsonUtil.parseJsonMap(t.getInputSchema());
+                                ToolDto.FunctionDef funcDef = new ToolDto.FunctionDef(
+                                        t.getNamespacedName(),
+                                        t.getDescription() != null ? t.getDescription() : "",
+                                        schemaMap.isEmpty() ? Map.of("type", "object", "properties", Map.of()) : schemaMap
+                                );
+                                return new ToolDto("function", funcDef);
+                            });
                 });
     }
 
-    @SuppressWarnings("unchecked")
-    public Flux<com.ppgpt.gateway.dto.ToolDto> getActiveToolsForGroup(String groupId) {
-        if (groupId == null || groupId.isBlank()) return getActiveTools();
-        return getGroupToolAccess(groupId)
-                .filter(McpToolDto::isAvailable)
-                .filter(McpToolDto::isEnabledForGroup)
-                .map(t -> {
-                    Map<String, Object> inputSchemaMap = Collections.emptyMap();
-                    if (t.getInputSchema() != null && !t.getInputSchema().isBlank()) {
-                        try {
-                            inputSchemaMap = objectMapper.readValue(t.getInputSchema(), Map.class);
-                        } catch (Exception ignored) {}
-                    }
-                    return new com.ppgpt.gateway.dto.ToolDto(
-                            "function",
-                            new com.ppgpt.gateway.dto.ToolDto.FunctionDef(
-                                    t.getNamespacedName(), // Guard 2: namespaced tool name
-                                    t.getDescription(),
-                                    inputSchemaMap
-                            )
-                    );
-                });
-    }
-
-    @SuppressWarnings("unchecked")
+    /**
+     * Executes a tool invocation request against an MCP or Legacy REST server.
+     *
+     * @param namespacedOrToolName Namespaced tool identifier (e.g. server_name__tool_name)
+     * @param arguments            Execution arguments map
+     * @return Mono emitting tool execution text result or error payload
+     */
     public Mono<String> executeTool(String namespacedOrToolName, Map<String, Object> arguments) {
+        if (namespacedOrToolName == null || namespacedOrToolName.isBlank()) {
+            return Mono.just("{\"error\": \"Invalid tool name\"}");
+        }
+
         String serverPrefix = "";
         String actualToolName = namespacedOrToolName;
 
-        if (namespacedOrToolName != null && namespacedOrToolName.contains("__")) {
+        if (namespacedOrToolName.contains("__")) {
             String[] parts = namespacedOrToolName.split("__", 2);
             serverPrefix = parts[0];
             actualToolName = parts[1];
@@ -448,9 +473,9 @@ public class McpServerService {
                     HttpMethod httpMethod = HttpMethod.POST;
                     String targetUrl = server.getEndpointUrl();
 
-                    if ("NON_MCP_REST".equals(server.getCapabilityStatus())) {
-                        String customMethod = (arguments != null && arguments.containsKey("method")) 
-                                ? String.valueOf(arguments.get("method")) 
+                    if (McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus())) {
+                        String customMethod = (arguments != null && arguments.containsKey("method"))
+                                ? String.valueOf(arguments.get("method"))
                                 : "POST";
                         try {
                             httpMethod = HttpMethod.valueOf(customMethod.toUpperCase());
@@ -473,23 +498,17 @@ public class McpServerService {
                             .contentType(MediaType.APPLICATION_JSON)
                             .header("Accept", "application/json, text/event-stream");
 
-                    if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
-                        String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
-                        spec.header("Authorization", "Bearer " + rawKey);
-                    } else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
-                        String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
-                        spec.header("Authorization", "Bearer " + rawToken);
-                    }
+                    applyAuthHeaders(spec, server);
 
                     Object postBody = null;
-                    if ("NON_MCP_REST".equals(server.getCapabilityStatus())) {
+                    if (McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus())) {
                         if (httpMethod != HttpMethod.GET) {
                             postBody = arguments != null ? arguments : Map.of();
                         }
                     } else {
                         postBody = Map.of(
                                 "jsonrpc", "2.0",
-                                "method", "tools/call",
+                                "method", McpConstants.METHOD_TOOLS_CALL,
                                 "params", Map.of(
                                         "name", finalToolName,
                                         "arguments", arguments != null ? arguments : Map.of()
@@ -509,8 +528,10 @@ public class McpServerService {
                                 try {
                                     Map<String, Object> resp = parseJsonResponse(rawBody);
                                     if (resp != null && resp.containsKey("result")) {
+                                        @SuppressWarnings("unchecked")
                                         Map<String, Object> result = (Map<String, Object>) resp.get("result");
                                         if (result != null && result.containsKey("content")) {
+                                            @SuppressWarnings("unchecked")
                                             List<Map<String, Object>> contentList = (List<Map<String, Object>>) result.get("content");
                                             if (contentList != null && !contentList.isEmpty()) {
                                                 String text = (String) contentList.get(0).get("text");
@@ -524,8 +545,17 @@ public class McpServerService {
                             .onErrorResume(e -> Mono.empty());
                 })
                 .next()
-                // Guard 5: Graceful tool execution fallback
                 .defaultIfEmpty("{\"error\": \"Tool '" + namespacedOrToolName + "' is currently unavailable or disabled by administrator.\"}");
+    }
+
+    private void applyAuthHeaders(WebClient.RequestBodySpec spec, McpServer server) {
+        if (McpConstants.AUTH_STATIC_KEY.equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
+            String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
+            spec.header(McpConstants.HEADER_AUTHORIZATION, McpConstants.HEADER_BEARER_PREFIX + rawKey);
+        } else if (McpConstants.AUTH_OAUTH2.equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
+            String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
+            spec.header(McpConstants.HEADER_AUTHORIZATION, McpConstants.HEADER_BEARER_PREFIX + rawToken);
+        }
     }
 
     private McpServerDto toDto(McpServer server) {
@@ -545,19 +575,16 @@ public class McpServerService {
                 .supportsTools(server.getSupportsTools() != null ? server.getSupportsTools() : true)
                 .supportsResources(server.getSupportsResources() != null ? server.getSupportsResources() : false)
                 .supportsPrompts(server.getSupportsPrompts() != null ? server.getSupportsPrompts() : false)
-                .capabilityStatus(server.getCapabilityStatus() != null ? server.getCapabilityStatus() : "DISCOVERED")
+                .capabilityStatus(server.getCapabilityStatus() != null ? server.getCapabilityStatus() : McpConstants.CAPABILITY_DISCOVERED)
                 .createdAt(server.getCreatedAt())
                 .build();
     }
 
-    // ─── MCP Multi-Capability Discovery & Handshake ─────────────────────────
-
-    @SuppressWarnings("unchecked")
     private Mono<McpServer> initializeHandshake(McpServer server) {
         WebClient.RequestBodySpec spec = prepareRequestSpec(server);
         Map<String, Object> jsonRpcBody = Map.of(
                 "jsonrpc", "2.0",
-                "method", "initialize",
+                "method", McpConstants.METHOD_INITIALIZE,
                 "params", Map.of(
                         "protocolVersion", "2024-11-05",
                         "clientInfo", Map.of("name", "PP-GPT Gateway", "version", "1.0.0"),
@@ -576,8 +603,10 @@ public class McpServerService {
                     try {
                         Map<String, Object> resp = parseJsonResponse(rawBody);
                         if (resp.containsKey("result")) {
+                            @SuppressWarnings("unchecked")
                             Map<String, Object> result = (Map<String, Object>) resp.get("result");
                             if (result != null) {
+                                @SuppressWarnings("unchecked")
                                 Map<String, Object> caps = (Map<String, Object>) result.get("capabilities");
                                 if (caps != null) {
                                     server.setSupportsTools(caps.containsKey("tools") || caps.isEmpty());
@@ -588,7 +617,7 @@ public class McpServerService {
                                     server.setSupportsResources(false);
                                     server.setSupportsPrompts(false);
                                 }
-                                server.setCapabilityStatus("DISCOVERED");
+                                server.setCapabilityStatus(McpConstants.CAPABILITY_DISCOVERED);
 
                                 return sendInitializedNotification(server)
                                         .then(mcpServerRepository.save(server));
@@ -598,12 +627,12 @@ public class McpServerService {
                         log.debug("[MCP Handshake] Failed to parse initialize response for '{}'", server.getName());
                     }
                     server.setSupportsTools(true);
-                    server.setCapabilityStatus("DISCOVERED");
+                    server.setCapabilityStatus(McpConstants.CAPABILITY_DISCOVERED);
                     return mcpServerRepository.save(server);
                 })
                 .onErrorResume(e -> {
                     log.info("[MCP Handshake] Server '{}' does not respond to 'initialize' (falling back to NON_MCP_REST / Manual mode).", server.getName());
-                    server.setCapabilityStatus("NON_MCP_REST");
+                    server.setCapabilityStatus(McpConstants.CAPABILITY_NON_MCP_REST);
                     return mcpServerRepository.save(server);
                 });
     }
@@ -612,7 +641,7 @@ public class McpServerService {
         WebClient.RequestBodySpec spec = prepareRequestSpec(server);
         Map<String, Object> notification = Map.of(
                 "jsonrpc", "2.0",
-                "method", "notifications/initialized"
+                "method", McpConstants.METHOD_NOTIFICATIONS_INITIALIZED
         );
         return spec.bodyValue(notification)
                 .retrieve()
@@ -628,21 +657,10 @@ public class McpServerService {
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Accept", "application/json, text/event-stream");
 
-        if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
-            String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
-            spec.header("Authorization", "Bearer " + rawKey);
-        } else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
-            String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
-            spec.header("Authorization", "Bearer " + rawToken);
-        }
+        applyAuthHeaders(spec, server);
         return spec;
     }
 
-    /**
-     * Synchronizes tools, resources, and prompts for an MCP Server with vulnerability protections:
-     * - Handshake (`initialize`) to discover protocol capabilities.
-     * - Fallback handling for servers without `tools/list` (NON_MCP_REST).
-     */
     private Mono<Boolean> pingLegacyEndpoint(McpServer server) {
         try {
             WebClient.RequestBodySpec spec = prepareRequestSpec(server);
@@ -656,25 +674,22 @@ public class McpServerService {
     }
 
     /**
-     * Synchronize tools from MCP Server via `tools/list` JSON-RPC method.
-     * Implements:
-     * - Auto-discovery & Upsert of tool schema into database.
-     * - Prompt injection guard on tool descriptions.
-     * - Name collision prevention via server namespacing prefix (server_name__tool_name).
-     * - Retry threshold protection (failed_sync_count >= 3) for network flakes.
+     * Synchronizes tools from an MCP server or verifies reachability for Legacy REST endpoints.
+     *
+     * @param serverId Server ID
+     * @return Mono emitting list of synchronized tool DTOs
      */
-    @SuppressWarnings("unchecked")
     public Mono<List<McpToolDto>> syncTools(String serverId) {
         return mcpServerRepository.findById(serverId)
                 .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
                 .flatMap(server -> {
-                    if ("NON_MCP_REST".equals(server.getCapabilityStatus())) {
+                    if (McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus())) {
                         return Mono.just(server);
                     }
                     return initializeHandshake(server);
                 })
                 .flatMap(server -> {
-                    if ("NON_MCP_REST".equals(server.getCapabilityStatus()) || Boolean.FALSE.equals(server.getSupportsTools())) {
+                    if (McpConstants.CAPABILITY_NON_MCP_REST.equals(server.getCapabilityStatus()) || Boolean.FALSE.equals(server.getSupportsTools())) {
                         log.info("[MCP Sync] Server '{}' operates in NON_MCP_REST/Manual mode. Verifying endpoint reachability...", server.getName());
                         return mcpToolRepository.findByMcpServerId(server.getId())
                                 .collectList()
@@ -701,7 +716,7 @@ public class McpServerService {
                     WebClient.RequestBodySpec spec = prepareRequestSpec(server);
                     Map<String, Object> jsonRpcBody = Map.of(
                             "jsonrpc", "2.0",
-                            "method", "tools/list",
+                            "method", McpConstants.METHOD_TOOLS_LIST,
                             "id", 1
                     );
 
@@ -710,13 +725,16 @@ public class McpServerService {
                             .bodyToFlux(String.class)
                             .collectList()
                             .map(lines -> String.join("\n", lines))
-                            .timeout(Duration.ofSeconds(5)) // Guard 4: Timeout protection
+                            .timeout(Duration.ofSeconds(5))
                             .flatMap(rawBody -> {
                                 Map<String, Object> resp = parseJsonResponse(rawBody);
+                                @SuppressWarnings("unchecked")
                                 Map<String, Object> result = (Map<String, Object>) resp.get("result");
                                 List<Map<String, Object>> toolsList = Collections.emptyList();
                                 if (result != null && result.containsKey("tools")) {
-                                    toolsList = (List<Map<String, Object>>) result.get("tools");
+                                    @SuppressWarnings("unchecked")
+                                    List<Map<String, Object>> castList = (List<Map<String, Object>>) result.get("tools");
+                                    toolsList = castList;
                                 }
                                 return processSyncSuccess(server, toolsList);
                             })
@@ -727,12 +745,16 @@ public class McpServerService {
                 });
     }
 
+    /**
+     * Synchronizes tools across all active MCP servers.
+     *
+     * @return Flux of synchronized tool DTOs
+     */
     public Flux<McpToolDto> syncAllTools() {
         return mcpServerRepository.findByIsActiveTrue()
                 .flatMap(server -> syncTools(server.getId()).flatMapMany(Flux::fromIterable));
     }
 
-    @SuppressWarnings("unchecked")
     private Mono<List<McpToolDto>> processSyncSuccess(McpServer server, List<Map<String, Object>> toolsList) {
         LocalDateTime now = LocalDateTime.now();
         List<String> currentToolNames = toolsList.stream()
@@ -740,15 +762,14 @@ public class McpServerService {
                 .filter(name -> name != null && !name.isBlank())
                 .collect(Collectors.toList());
 
-        // 1. Process returned tools (Upsert)
         Flux<McpTool> upsertedFlux = Flux.fromIterable(toolsList)
                 .flatMap(t -> {
                     String name = (String) t.get("name");
                     if (name == null || name.isBlank()) return Mono.empty();
 
                     String rawDesc = (String) t.get("description");
-                    String sanitizedDesc = sanitizeDescription(rawDesc); // Guard 3: Prompt injection guard
-                    String namespaced = computeNamespacedName(server.getName(), name); // Guard 2: Name collision guard
+                    String sanitizedDesc = SecuritySanitizerUtil.sanitizeToolDescription(rawDesc);
+                    String namespaced = computeNamespacedName(server.getName(), name);
 
                     String schemaJson = "";
                     try {
@@ -768,7 +789,7 @@ public class McpServerService {
                                 existing.setDescription(sanitizedDesc);
                                 existing.setInputSchema(finalSchema);
                                 existing.setAvailable(true);
-                                existing.setFailedSyncCount(0); // Reset failure threshold
+                                existing.setFailedSyncCount(0);
                                 existing.setLastSyncedAt(now);
                                 existing.setNewEntity(false);
                                 return mcpToolRepository.save(existing);
@@ -791,7 +812,6 @@ public class McpServerService {
                             }));
                 });
 
-        // 2. Handle missing tools (Increment failed_sync_count; prune if >= 3)
         Mono<Void> pruningsMono = mcpToolRepository.findByMcpServerId(server.getId())
                 .filter(existing -> !currentToolNames.contains(existing.getToolName()))
                 .flatMap(removed -> {
@@ -799,7 +819,6 @@ public class McpServerService {
                     removed.setFailedSyncCount(newCount);
                     removed.setNewEntity(false);
                     if (newCount >= 3) {
-                        // Mark unavailable and remove from group access
                         removed.setAvailable(false);
                         return groupMcpToolAccessRepository.deleteByMcpToolId(removed.getId())
                                 .then(mcpToolRepository.save(removed));
@@ -815,7 +834,6 @@ public class McpServerService {
     }
 
     private Mono<List<McpToolDto>> processSyncFailure(McpServer server) {
-        // Network flake / timeout: Increment failed_sync_count for all server tools; prune only if >= 3
         return mcpToolRepository.findByMcpServerId(server.getId())
                 .flatMap(tool -> {
                     int newCount = tool.getFailedSyncCount() + 1;
@@ -832,12 +850,24 @@ public class McpServerService {
                 .collectList();
     }
 
+    /**
+     * Retrieves all discovered tools for a given server ID.
+     *
+     * @param serverId Server ID
+     * @return Flux of tool DTOs
+     */
     public Flux<McpToolDto> getDiscoveredTools(String serverId) {
         return mcpServerRepository.findById(serverId)
                 .flatMapMany(server -> mcpToolRepository.findByMcpServerId(serverId)
                         .map(t -> toToolDto(t, server.getName(), false)));
     }
 
+    /**
+     * Retrieves group tool access status for all tools given a group ID.
+     *
+     * @param groupId Group ID
+     * @return Flux of tool DTOs with group authorization status
+     */
     public Flux<McpToolDto> getGroupToolAccess(String groupId) {
         return mcpServerRepository.findByIsActiveTrue()
                 .collectMap(McpServer::getId, McpServer::getName)
@@ -848,13 +878,20 @@ public class McpServerService {
                             mcpToolRepository.findAll()
                                 .map(t -> {
                                     String srvName = serverMap.getOrDefault(t.getMcpServerId(), "Unknown Server");
-                                    boolean enabled = enabledMap.getOrDefault(t.getId(), true); // Default enabled if available
+                                    boolean enabled = enabledMap.getOrDefault(t.getId(), true);
                                     return toToolDto(t, srvName, enabled);
                                 })
                         )
                 );
     }
 
+    /**
+     * Updates group tool access permissions.
+     *
+     * @param groupId  Group ID
+     * @param requests List of tool access permission requests
+     * @return Mono completing upon update
+     */
     public Mono<Void> updateGroupToolAccess(String groupId, List<GroupToolAccessRequest> requests) {
         if (requests == null || requests.isEmpty()) return Mono.empty();
         return Flux.fromIterable(requests)
@@ -879,25 +916,23 @@ public class McpServerService {
                 .then();
     }
 
-    private String sanitizeDescription(String input) {
-        if (input == null) return "";
-        String cleaned = input.replaceAll("(?i)(ignore\\s+all\\s+previous\\s+instructions|system\\s+override|system\\s+prompt\\s+override|reveal\\s+admin\\s+password|ignore\\s+safety\\s+rules)", "[FILTERED]");
-        if (cleaned.length() > 1000) {
-            cleaned = cleaned.substring(0, 1000) + "...";
-        }
-        return cleaned;
-    }
-
+    /**
+     * Creates a manual tool definition for legacy REST endpoints.
+     *
+     * @param serverId Server ID
+     * @param request  Manual tool request
+     * @return Mono emitting created tool DTO
+     */
     public Mono<McpToolDto> createManualTool(String serverId, CreateManualToolRequest request) {
         return mcpServerRepository.findById(serverId)
                 .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
                 .flatMap(server -> {
-                    server.setCapabilityStatus("NON_MCP_REST");
+                    server.setCapabilityStatus(McpConstants.CAPABILITY_NON_MCP_REST);
                     server.setSupportsTools(true);
                     return mcpServerRepository.save(server)
                             .flatMap(savedServer -> {
                                 String name = request.getToolName().trim();
-                                String sanitizedDesc = sanitizeDescription(request.getDescription());
+                                String sanitizedDesc = SecuritySanitizerUtil.sanitizeToolDescription(request.getDescription());
                                 String namespaced = computeNamespacedName(savedServer.getName(), name);
                                 String schema = (request.getInputSchema() != null && !request.getInputSchema().isBlank()) ? request.getInputSchema() : "{}";
 
@@ -933,6 +968,13 @@ public class McpServerService {
                 });
     }
 
+    /**
+     * Deletes a manual tool definition and its group access rules.
+     *
+     * @param serverId Server ID
+     * @param toolId   Tool ID
+     * @return Mono completing upon deletion
+     */
     public Mono<Void> deleteManualTool(String serverId, String toolId) {
         return mcpToolRepository.findById(toolId)
                 .filter(tool -> tool.getMcpServerId().equals(serverId))
@@ -940,11 +982,18 @@ public class McpServerService {
                         .then(mcpToolRepository.delete(tool)));
     }
 
+    /**
+     * Imports an OpenAPI 3.0 specification text into namespaced REST tools.
+     *
+     * @param serverId Server ID
+     * @param request  OpenAPI import payload
+     * @return Mono emitting list of created tool DTOs
+     */
     public Mono<List<McpToolDto>> importOpenApiSpec(String serverId, OpenApiImportRequest request) {
         return mcpServerRepository.findById(serverId)
                 .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
                 .flatMap(server -> {
-                    server.setCapabilityStatus("NON_MCP_REST");
+                    server.setCapabilityStatus(McpConstants.CAPABILITY_NON_MCP_REST);
                     server.setSupportsTools(true);
                     return mcpServerRepository.save(server)
                             .flatMap(savedServer -> {
@@ -956,10 +1005,22 @@ public class McpServerService {
                 });
     }
 
+    /**
+     * Retrieves discovered MCP resources for a server.
+     *
+     * @param serverId Server ID
+     * @return Flux of MCP resources
+     */
     public Flux<McpResource> getDiscoveredResources(String serverId) {
         return mcpResourceRepository.findByMcpServerId(serverId);
     }
 
+    /**
+     * Retrieves discovered MCP prompts for a server.
+     *
+     * @param serverId Server ID
+     * @return Flux of MCP prompts
+     */
     public Flux<McpPrompt> getDiscoveredPrompts(String serverId) {
         return mcpPromptRepository.findByMcpServerId(serverId);
     }
@@ -1005,7 +1066,6 @@ public class McpServerService {
         return result;
     }
 
-    // Guard 2 helper: Unique namespacing
     private String computeNamespacedName(String serverName, String toolName) {
         String cleanServer = serverName.replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
         return cleanServer + "__" + toolName;

@@ -21,142 +21,150 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 
 /**
- * Authentication service supporting LOCAL and AZURE_AD (mock LDAP) auth.
- *
- * JIT Provisioning: On first AZURE_AD login, a new user record is
- * automatically created and assigned to DEFAULT_GROUP.
+ * Authentication service supporting LOCAL BCrypt password verification and AZURE_AD (mock LDAP / JIT provisioning).
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
-        private static final String DEFAULT_GROUP_NAME = "DEFAULT_GROUP";
-        private static final String ADMIN_GROUP_NAME = "ADMIN_GROUP";
-        private static final String ROLE_ADMIN = "ROLE_ADMIN";
-        private static final String ROLE_USER = "ROLE_USER";
+    private static final String DEFAULT_GROUP_NAME = "DEFAULT_GROUP";
+    private static final String ADMIN_GROUP_NAME = "ADMIN_GROUP";
+    private static final String ROLE_ADMIN = "ROLE_ADMIN";
+    private static final String ROLE_USER = "ROLE_USER";
 
-        private final UserRepository userRepository;
-        private final UserGroupRepository userGroupRepository;
-        private final JwtTokenProvider jwtTokenProvider;
-        private final PasswordEncoder passwordEncoder;
-        private final QuotaService quotaService;
-        private final R2dbcEntityTemplate entityTemplate;
+    private final UserRepository userRepository;
+    private final UserGroupRepository userGroupRepository;
+    private final JwtTokenProvider jwtTokenProvider;
+    private final PasswordEncoder passwordEncoder;
+    private final QuotaService quotaService;
+    private final R2dbcEntityTemplate entityTemplate;
 
-        @Value("${app.mock-ad.enabled:true}")
-        private boolean mockAdEnabled;
+    @Value("${app.mock-ad.enabled:true}")
+    private boolean mockAdEnabled;
 
-        // ─── Login ───────────────────────────────────────────────────────────────
+    /**
+     * Authenticates a login request (LOCAL or AZURE_AD) and issues a JWT token.
+     *
+     * @param request Login credentials and auth source
+     * @return Mono emitting AuthResponse payload containing JWT token and user info
+     */
+    public Mono<AuthResponse> login(LoginRequest request) {
+        String authSource = request.getAuthSource() != null ? request.getAuthSource().toUpperCase() : "LOCAL";
 
-        public Mono<AuthResponse> login(LoginRequest request) {
-                return switch (request.getAuthSource()) {
-                        case "LOCAL" -> localLogin(request);
-                        case "AZURE_AD" -> azureAdLogin(request);
-                        default -> Mono.error(new ResponseStatusException(
-                                        HttpStatus.BAD_REQUEST, "Unknown auth_source: " + request.getAuthSource()));
-                };
+        if ("AZURE_AD".equals(authSource)) {
+            return loginAzureAd(request);
+        }
+        return loginLocal(request);
+    }
+
+    /**
+     * Handles local BCrypt password authentication.
+     */
+    private Mono<AuthResponse> loginLocal(LoginRequest request) {
+        return userRepository.findByUsername(request.getUsername())
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password")))
+                .flatMap(user -> {
+                    if (!"LOCAL".equalsIgnoreCase(user.getAuthSource())) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "This account uses " + user.getAuthSource() + " authentication."));
+                    }
+                    if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password"));
+                    }
+                    return buildAuthResponse(user);
+                });
+    }
+
+    /**
+     * Handles Azure AD (mock LDAP) authentication with Just-In-Time (JIT) user provisioning.
+     */
+    private Mono<AuthResponse> loginAzureAd(LoginRequest request) {
+        if (!mockAdEnabled) {
+            return Mono.error(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Azure AD integration is disabled"));
+        }
+        if (request.getPassword() == null || request.getPassword().isBlank()) {
+            return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Password required for Azure AD login"));
         }
 
-        public Mono<AuthResponse> getMe(String userId) {
-                return buildAuthResponse(userId);
-        }
+        String username = request.getUsername().trim().toLowerCase();
 
-        // ─── LOCAL auth ──────────────────────────────────────────────────────────
+        return userRepository.findByUsername(username)
+                .flatMap(this::buildAuthResponse)
+                .switchIfEmpty(Mono.defer(() -> jitProvisionUser(username)));
+    }
 
-        private Mono<AuthResponse> localLogin(LoginRequest request) {
-                return userRepository.findByUsername(request.getUsername())
-                                .switchIfEmpty(Mono.error(new ResponseStatusException(
-                                                HttpStatus.UNAUTHORIZED, "Invalid credentials")))
-                                .filter(u -> "LOCAL".equals(u.getAuthSource()))
-                                .switchIfEmpty(Mono.error(new ResponseStatusException(
-                                                HttpStatus.UNAUTHORIZED, "Account is not a LOCAL account")))
-                                .filter(u -> passwordEncoder.matches(request.getPassword(), u.getPasswordHash()))
-                                .switchIfEmpty(Mono.error(new ResponseStatusException(
-                                                HttpStatus.UNAUTHORIZED, "Invalid credentials")))
-                                .flatMap(u -> buildAuthResponse(u.getId()));
-        }
+    /**
+     * Provisions a new user automatically on first Azure AD login.
+     */
+    private Mono<AuthResponse> jitProvisionUser(String username) {
+        log.info("[JIT Provisioning] Creating new Azure AD user: {}", username);
 
-        // ─── AZURE_AD (mock) auth ────────────────────────────────────────────────
+        return userGroupRepository.findByGroupName(DEFAULT_GROUP_NAME)
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Default user group '" + DEFAULT_GROUP_NAME + "' not found. Database seeding incomplete.")))
+                .flatMap(defaultGroup -> {
+                    User newUser = User.builder()
+                            .id(UUID.randomUUID().toString())
+                            .username(username)
+                            .email(username.contains("@") ? username : username + "@company.com")
+                            .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
+                            .authSource("AZURE_AD")
+                            .groupId(defaultGroup.getId())
+                            .createdAt(LocalDateTime.now(ZoneOffset.UTC))
+                            .build();
 
-        /**
-         * Mock LDAP bind: accepts any non-empty username/password.
-         * In production, replace with real MSAL/OIDC token validation.
-         *
-         * JIT Provisioning: If the user doesn't exist, create them with DEFAULT_GROUP.
-         */
-        private Mono<AuthResponse> azureAdLogin(LoginRequest request) {
-                if (!mockAdEnabled) {
-                        return Mono.error(new ResponseStatusException(
-                                        HttpStatus.SERVICE_UNAVAILABLE, "AZURE_AD auth is not enabled"));
-                }
+                    return entityTemplate.insert(newUser)
+                            .flatMap(this::buildAuthResponse);
+                });
+    }
 
-                // Simulate AD bind: non-empty credentials = success
-                if (request.getPassword() == null || request.getPassword().isBlank()) {
-                        return Mono.error(new ResponseStatusException(
-                                        HttpStatus.UNAUTHORIZED, "AD authentication failed"));
-                }
+    /**
+     * Builds AuthResponse DTO including JWT token and current usage metrics.
+     *
+     * @param user Authenticated user entity
+     * @return Mono emitting AuthResponse payload
+     */
+    public Mono<AuthResponse> buildAuthResponse(User user) {
+        return userGroupRepository.findById(user.getGroupId())
+                .flatMap(group -> quotaService.getDailyUsage(user.getId())
+                        .map(creditsUsed -> {
+                            String role = ADMIN_GROUP_NAME.equalsIgnoreCase(group.getGroupName())
+                                    ? ROLE_ADMIN
+                                    : ROLE_USER;
 
-                return userRepository.findByUsername(request.getUsername())
-                                .switchIfEmpty(jitProvision(request.getUsername()))
-                                .flatMap(u -> buildAuthResponse(u.getId()));
-        }
+                            String token = jwtTokenProvider.generateToken(
+                                    user.getId(),
+                                    user.getUsername(),
+                                    role
+                            );
 
-        /**
-         * Just-In-Time provisioning: create a new user record for a first-time AD
-         * login.
-         */
-        private Mono<User> jitProvision(String username) {
-                log.info("JIT provisioning new AD user: {}", username);
-                return userGroupRepository.findByGroupName(DEFAULT_GROUP_NAME)
-                                .switchIfEmpty(Mono.error(new ResponseStatusException(
-                                                HttpStatus.INTERNAL_SERVER_ERROR,
-                                                "DEFAULT_GROUP not found — seed data missing")))
-                                .flatMap(defaultGroup -> {
-                                        User newUser = User.builder()
-                                                        .id(UUID.randomUUID().toString())
-                                                        .username(username)
-                                                        .email(username + "@ad.local")
-                                                        .authSource("AZURE_AD")
-                                                        .groupId(defaultGroup.getId())
-                                                        .createdAt(LocalDateTime.now(ZoneOffset.UTC))
-                                                        .build();
-                                        return entityTemplate.insert(newUser);
-                                });
-        }
+                            long expiryMs = jwtTokenProvider.getExpiryMs();
+                            long expiresAt = System.currentTimeMillis() + expiryMs;
 
-        // ─── Response builder ─────────────────────────────────────────────────────
+                            return AuthResponse.builder()
+                                    .token(token)
+                                    .userId(user.getId())
+                                    .username(user.getUsername())
+                                    .email(user.getEmail())
+                                    .role(role)
+                                    .groupName(group.getGroupName())
+                                    .maxDailyCredits(group.getMaxDailyCredits())
+                                    .creditsUsedToday(creditsUsed)
+                                    .expiresAt(expiresAt)
+                                    .build();
+                        }));
+    }
 
-        private Mono<AuthResponse> buildAuthResponse(String userId) {
-                return userRepository.findById(userId)
-                                .switchIfEmpty(Mono.error(new ResponseStatusException(
-                                                HttpStatus.NOT_FOUND, "User not found")))
-                                .flatMap(user -> userGroupRepository.findById(user.getGroupId())
-                                                .switchIfEmpty(userGroupRepository.findByGroupName(DEFAULT_GROUP_NAME))
-                                                .zipWith(quotaService.getDailyUsage(userId))
-                                                .map(tuple -> {
-                                                        var group = tuple.getT1();
-                                                        var used = tuple.getT2();
-
-                                                        String role = ADMIN_GROUP_NAME.equals(group.getGroupName())
-                                                                        ? ROLE_ADMIN
-                                                                        : ROLE_USER;
-
-                                                        String token = jwtTokenProvider.generateToken(
-                                                                        userId, user.getUsername(), role);
-
-                                                        return AuthResponse.builder()
-                                                                        .token(token)
-                                                                        .userId(userId)
-                                                                        .username(user.getUsername())
-                                                                        .email(user.getEmail())
-                                                                        .role(role)
-                                                                        .groupName(group.getGroupName())
-                                                                        .maxDailyCredits(group.getMaxDailyCredits())
-                                                                        .creditsUsedToday(used)
-                                                                        .expiresAt(System.currentTimeMillis()
-                                                                                        + jwtTokenProvider
-                                                                                                        .getExpiryMs())
-                                                                        .build();
-                                                }));
-        }
+    /**
+     * Retrieves current user profile and credit usage metrics.
+     *
+     * @param userId Authenticated user ID
+     * @return Mono emitting AuthResponse payload
+     */
+    public Mono<AuthResponse> getCurrentUser(String userId) {
+        return userRepository.findById(userId)
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found")))
+                .flatMap(this::buildAuthResponse);
+    }
 }

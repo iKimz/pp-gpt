@@ -21,8 +21,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Manages daily credit quota using Redis as the fast-path store
- * and MariaDB (token_usage) as the durable source of truth.
+ * Manages daily user credit quota using Redis as the high-throughput fast-path store
+ * and MariaDB (token_usage table) as the durable source of truth.
  *
  * Key format: quota:user:{userId}:{yyyy-MM-dd}
  */
@@ -32,72 +32,82 @@ import java.util.UUID;
 public class QuotaService {
 
     private static final String KEY_PREFIX = "quota:user:";
-    private static final int    SCALE       = 4;
+    private static final int SCALE = 4;
 
     private final ReactiveStringRedisTemplate redisTemplate;
-    private final DefaultRedisScript<Long>    quotaCheckScript;
-    private final TokenUsageRepository        tokenUsageRepository;
-
-    // ─── Public API ──────────────────────────────────────────────────────────
+    private final DefaultRedisScript<Long> quotaCheckScript;
+    private final TokenUsageRepository tokenUsageRepository;
 
     /**
-     * Atomically check quota and pre-deduct in Redis.
-     * Returns true if allowed, false if quota exceeded.
+     * Atomically check quota and pre-deduct estimated credits in Redis via Lua Script.
      *
-     * @param userId       the requesting user's ID
-     * @param group        the user's group (contains max_daily_credits)
-     * @param creditAmount credits to reserve
+     * @param userId       Requesting user ID
+     * @param group        User group entity
+     * @param creditAmount Credits to reserve
+     * @return Mono emitting true if within quota limit, false if limit exceeded
      */
     public Mono<Boolean> checkAndReserve(String userId, UserGroup group, BigDecimal creditAmount) {
-        String key   = buildKey(userId);
-        String limit = group.getMaxDailyCredits().toPlainString();
-        String amount= creditAmount.setScale(SCALE, RoundingMode.HALF_UP).toPlainString();
-        long   ttl   = secondsUntilMidnight();
+        return checkAndReserveQuota(userId, group.getMaxDailyCredits(), creditAmount);
+    }
+
+    /**
+     * Overloaded helper method to check quota with explicit max daily credit limit.
+     *
+     * @param userId          Requesting user ID
+     * @param maxDailyCredits Max allowed daily credits
+     * @param creditAmount    Credits to reserve
+     * @return Mono emitting true if allowed, false if limit exceeded
+     */
+    public Mono<Boolean> checkAndReserveQuota(String userId, BigDecimal maxDailyCredits, BigDecimal creditAmount) {
+        String key = buildKey(userId);
+        String limit = maxDailyCredits.toPlainString();
+        String amount = creditAmount.setScale(SCALE, RoundingMode.HALF_UP).toPlainString();
+        long ttl = secondsUntilMidnight();
 
         return redisTemplate.execute(
                 quotaCheckScript,
                 List.of(key),
                 List.of(limit, amount, String.valueOf(ttl))
         )
-        .next()
-        .map(result -> result == 1L)
-        // Fallback: if Redis is down, check DB directly
-        .onErrorResume(ex -> {
-            log.warn("Redis quota check failed, falling back to DB: {}", ex.getMessage());
-            return checkQuotaFromDb(userId, group, creditAmount);
-        });
+                .next()
+                .map(result -> result == 1L)
+                .onErrorResume(ex -> {
+                    log.warn("Redis quota check failed, falling back to DB: {}", ex.getMessage());
+                    return checkQuotaFromDb(userId, maxDailyCredits, creditAmount);
+                });
     }
 
     /**
-     * Deduct final credits after stream completes/cancels.
-     * First corrects any estimation error in Redis, then persists to DB.
+     * Finalizes credit deduction after AI stream completes or cancels.
+     * Corrects any pre-flight estimation error in Redis, then asynchronously persists to DB.
      *
-     * @param userId          user
-     * @param estimatedCredits what was pre-reserved
-     * @param actualCredits    what was actually used
+     * @param userId           User ID
+     * @param estimatedCredits Pre-reserved estimated credits
+     * @param actualCredits    Actual calculated credits from input/output tokens
+     * @return Mono completing upon storage
      */
     public Mono<Void> finalizeDeduction(String userId, BigDecimal estimatedCredits, BigDecimal actualCredits) {
         BigDecimal diff = actualCredits.subtract(estimatedCredits);
 
-        // Adjust Redis (add or subtract the diff from estimation)
         Mono<Void> redisAdjust = Mono.empty();
         if (diff.compareTo(BigDecimal.ZERO) != 0) {
-            String key       = buildKey(userId);
-            String diffStr   = diff.toPlainString();
+            String key = buildKey(userId);
+            String diffStr = diff.toPlainString();
             redisAdjust = redisTemplate.opsForValue()
                     .increment(key, Double.parseDouble(diffStr))
                     .then();
         }
 
-        // Persist to DB (upsert today's usage)
         Mono<Void> dbPersist = persistToDb(userId, actualCredits);
-
         return redisAdjust.then(dbPersist);
     }
 
     /**
-     * Get today's credits used for a user.
-     * Tries Redis first, falls back to DB.
+     * Gets today's credit usage for a user.
+     * Checks Redis first, falling back to MariaDB.
+     *
+     * @param userId User ID
+     * @return Mono emitting today's used credit amount
      */
     public Mono<BigDecimal> getDailyUsage(String userId) {
         return redisTemplate.opsForValue()
@@ -107,22 +117,18 @@ public class QuotaService {
                 .switchIfEmpty(fetchUsageFromDb(userId));
     }
 
-    // ─── Private helpers ─────────────────────────────────────────────────────
-
     private String buildKey(String userId) {
         return KEY_PREFIX + userId + ":" + LocalDate.now(ZoneOffset.UTC);
     }
 
     private long secondsUntilMidnight() {
         long secs = LocalTime.now(ZoneOffset.UTC).until(LocalTime.MIDNIGHT, ChronoUnit.SECONDS);
-        // until(MIDNIGHT) is negative after midnight-of-day; adding 86400 normalises to [0, 86400).
-        // We clamp to minimum 1 so Redis never receives TTL=0 (which evicts immediately).
         return Math.max(1L, secs + 86400L);
     }
 
-    private Mono<Boolean> checkQuotaFromDb(String userId, UserGroup group, BigDecimal amount) {
+    private Mono<Boolean> checkQuotaFromDb(String userId, BigDecimal maxDailyCredits, BigDecimal amount) {
         return fetchUsageFromDb(userId)
-                .map(used -> used.add(amount).compareTo(group.getMaxDailyCredits()) <= 0);
+                .map(used -> used.add(amount).compareTo(maxDailyCredits) <= 0);
     }
 
     private Mono<BigDecimal> fetchUsageFromDb(String userId) {

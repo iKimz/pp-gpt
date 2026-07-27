@@ -4,9 +4,15 @@ import com.ppgpt.gateway.service.McpServerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
+/**
+ * REST Controller for MCP Server OAuth2 authorization callbacks.
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/mcp/oauth")
@@ -17,7 +23,13 @@ public class McpOAuthController {
 
     /**
      * OAuth callback endpoint invoked by external OAuth Providers after user approves authorization in popup.
-     * Renders a clean HTML response that posts the result back to window.opener and closes the popup.
+     * Renders a clean HTML response that posts the result back to window.opener via postMessage and closes the popup.
+     *
+     * @param code             Authorization code
+     * @param state            State payload (carries serverId)
+     * @param error            OAuth error code if authorization failed
+     * @param errorDescription Detailed OAuth error description
+     * @return Mono emitting HTML response string
      */
     @GetMapping(value = "/callback", produces = MediaType.TEXT_HTML_VALUE)
     public Mono<String> handleOAuthCallback(
@@ -46,8 +58,7 @@ public class McpOAuthController {
             return Mono.just(renderPopupResponse(false, "Missing authorization code from OAuth provider", state, null));
         }
 
-        // Save mock access token or process token exchange
-        String serverId = state; // state carries serverId
+        String serverId = state;
         if (serverId != null && !serverId.isBlank()) {
             return mcpServerService.saveOAuthTokens(serverId, "oauth_token_" + code, "refresh_token_" + code, 3600L)
                     .map(dto -> renderPopupResponse(true, "Successfully connected to MCP Server!", serverId, code))
@@ -58,6 +69,10 @@ public class McpOAuthController {
     }
 
     private String renderPopupResponse(boolean success, String message, String serverId, String code) {
+        String safeMessage = escapeJs(message);
+        String safeServerId = escapeJs(serverId);
+        String safeCode = escapeJs(code);
+
         return """
             <!DOCTYPE html>
             <html>
@@ -98,9 +113,17 @@ public class McpOAuthController {
                 success ? "Authorization Successful" : "Authorization Failed",
                 message,
                 success,
-                message,
-                serverId != null ? serverId : "",
-                code != null ? code : ""
+                safeMessage,
+                safeServerId,
+                safeCode
         );
+    }
+
+    private String escapeJs(String str) {
+        if (str == null) return "";
+        return str.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "");
     }
 }

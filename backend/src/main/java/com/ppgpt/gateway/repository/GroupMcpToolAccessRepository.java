@@ -9,6 +9,8 @@ import reactor.core.publisher.Mono;
 @Repository
 public interface GroupMcpToolAccessRepository extends ReactiveCrudRepository<GroupMcpToolAccess, String> {
     Flux<GroupMcpToolAccess> findByGroupId(String groupId);
+    Flux<GroupMcpToolAccess> findByGroupIdAndIsEnabledTrue(String groupId);
+    Flux<GroupMcpToolAccess> findByGroupIdAndIsEnabled(String groupId, boolean isEnabled);
     Mono<GroupMcpToolAccess> findByGroupIdAndMcpToolId(String groupId, String mcpToolId);
     Mono<Void> deleteByGroupId(String groupId);
     Mono<Void> deleteByMcpToolId(String mcpToolId);

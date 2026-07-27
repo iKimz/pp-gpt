@@ -1,14 +1,33 @@
 package com.ppgpt.gateway.controller;
 
-import com.ppgpt.gateway.dto.*;
+import com.ppgpt.gateway.dto.CreditRateDto;
+import com.ppgpt.gateway.dto.GroupDto;
+import com.ppgpt.gateway.dto.ModelDto;
+import com.ppgpt.gateway.dto.UserDto;
 import com.ppgpt.gateway.service.AdminService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.LocalDate;
+import java.util.Map;
+
+/**
+ * REST Controller for Admin endpoints (Models, Groups, Credit Rates, Users, Dashboard Analytics, Audit Logs).
+ */
 @RestController
 @RequestMapping("/api/v1/admin")
 @PreAuthorize("hasAuthority('ROLE_ADMIN')")
@@ -91,9 +110,9 @@ public class AdminController {
     // ─── Dashboard Analytics ──────────────────────────────────────────
 
     @GetMapping("/dashboard/analytics")
-    public Flux<com.ppgpt.gateway.dto.AnalyticsDto> getAnalytics(
-            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate startDate,
-            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate endDate) {
+    public Mono<Map<String, Object>> getAnalytics(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return adminService.getAnalytics(startDate, endDate);
     }
 
@@ -121,15 +140,15 @@ public class AdminController {
         return adminService.deleteUser(id);
     }
 
-    // ─── Audit Logs (read-only) ───────────────────────────────────────────────
+    // ─── Audit Logs ───────────────────────────────────────────────────────────
 
     @GetMapping("/audit-logs")
-    public Mono<PageResponse<AuditLogDto>> auditLogs(
-            @RequestParam(required = false) String modelId,
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate,
+    public Mono<Map<String, Object>> auditLogs(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return adminService.listAuditLogs(modelId, startDate, endDate, page, size);
+        return adminService.getAuditLogs(search, startDate, endDate, page, size);
     }
 }

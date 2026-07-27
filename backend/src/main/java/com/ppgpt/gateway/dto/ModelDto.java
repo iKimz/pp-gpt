@@ -53,4 +53,7 @@ public class ModelDto {
     /** Indicates if the model supports tool calling / MCP tools */
     @Builder.Default
     private boolean supportsTools = true;
+
+    /** Indicates whether credentials are configured for this model */
+    private boolean hasCredentials;
 }

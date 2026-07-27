@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -18,4 +20,5 @@ public class UserDto {
     private String groupName;
     /** Only accepted on create for LOCAL users; never returned. */
     private String password;
+    private LocalDateTime createdAt;
 }

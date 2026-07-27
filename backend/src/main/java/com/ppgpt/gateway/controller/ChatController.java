@@ -9,9 +9,17 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
+/**
+ * REST Controller for AI Chat completion streaming, model discovery, and chat history retrieval.
+ */
 @RestController
 @RequestMapping("/api/v1/chat")
 @RequiredArgsConstructor
@@ -20,8 +28,10 @@ public class ChatController {
     private final ChatService chatService;
 
     /**
-     * GET /api/v1/chat/models
-     * Returns a list of models available to the authenticated user based on their group.
+     * Retrieves models available for invocation by the authenticated user based on group access.
+     *
+     * @param auth Spring Security authentication object
+     * @return Flux of available model DTOs
      */
     @GetMapping("/models")
     public Flux<ModelDto> getModels(Authentication auth) {
@@ -30,11 +40,11 @@ public class ChatController {
     }
 
     /**
-     * POST /api/v1/chat/stream
-     * Streams AI response as Server-Sent Events.
-     * Client-side AbortController.abort() triggers backend doFinally() / doOnCancel().
+     * Streams AI response as Server-Sent Events (SSE).
      *
-     * Produces: text/event-stream
+     * @param request Chat completion request payload
+     * @param auth    Spring Security authentication object
+     * @return Flux of SSE string events
      */
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> stream(
@@ -45,8 +55,12 @@ public class ChatController {
     }
 
     /**
-     * GET /api/v1/chat/history?page=0&size=20
-     * Returns paginated chat history for the authenticated user.
+     * Retrieves paginated chat history for the authenticated user.
+     *
+     * @param page Page index (0-based)
+     * @param size Page size
+     * @param auth Spring Security authentication object
+     * @return Flux of ChatLog entities
      */
     @GetMapping("/history")
     public Flux<ChatLog> history(
