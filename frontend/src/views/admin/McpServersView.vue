@@ -3,18 +3,28 @@
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold text-[#1a1b22] tracking-tight font-heading">🛠️ MCP Servers</h1>
-        <p class="text-xs text-gray-500 mt-1">Configure and manage internal & external tool endpoints. Supports both Static API Keys and OAuth 2.0 PKCE Authentication Flow.</p>
+        <h1 class="text-2xl font-bold text-[#1a1b22] tracking-tight font-heading">🛠️ MCP Servers & Tool Discovery</h1>
+        <p class="text-xs text-gray-500 mt-1">Manage MCP servers, discover capabilities, and configure selective tool schemas for LLM context optimization.</p>
       </div>
-      <button
-        @click="openModal()"
-        class="inline-flex items-center gap-2 px-4 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] text-xs font-semibold rounded-xl shadow-sm transition-all"
-      >
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-        </svg>
-        Add MCP Server
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          @click="syncAllTools"
+          :disabled="syncingAll"
+          class="inline-flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-xl border border-[#e8e7f1] shadow-sm transition-all disabled:opacity-50"
+        >
+          <span :class="['text-sm', syncingAll ? 'animate-spin' : '']">🔄</span>
+          {{ syncingAll ? 'Syncing All...' : 'Sync All Tools' }}
+        </button>
+        <button
+          @click="openModal()"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] text-xs font-semibold rounded-xl shadow-sm transition-all"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Add MCP Server
+        </button>
+      </div>
     </div>
 
     <!-- Stats summary -->
@@ -97,75 +107,155 @@
               <th class="py-3.5 px-4">Endpoint URL</th>
               <th class="py-3.5 px-4">Auth Type</th>
               <th class="py-3.5 px-4">Status</th>
+              <th class="py-3.5 px-4">Discovered Tools</th>
               <th class="py-3.5 px-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-[#e8e7f1]">
-            <tr v-for="srv in servers" :key="srv.id" class="hover:bg-[#fbf8ff]/60 transition-colors">
-              <td class="py-3.5 px-4">
-                <p class="font-bold text-[#1a1b22]">{{ srv.name }}</p>
-                <p v-if="srv.description" class="text-[11px] text-gray-400 mt-0.5 line-clamp-1">{{ srv.description }}</p>
-              </td>
-              <td class="py-3.5 px-4 font-mono text-[11px] text-gray-600">
-                {{ srv.endpointUrl }}
-              </td>
-              <td class="py-3.5 px-4">
-                <span
-                  :class="[
-                    'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border',
-                    srv.authType === 'OAUTH2'
-                      ? 'bg-purple-50 text-purple-700 border-purple-200'
-                      : srv.hasApiKey
-                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                        : 'bg-gray-50 text-gray-500 border-gray-200'
-                  ]"
-                >
-                  <span v-if="srv.authType === 'OAUTH2'">🛡️ OAuth 2.0 {{ srv.hasOAuthTokens ? '(Connected)' : '(Needs Login)' }}</span>
-                  <span v-else>{{ srv.hasApiKey ? '🔑 API Key Set' : '🔓 No Auth' }}</span>
-                </span>
-              </td>
-              <td class="py-3.5 px-4">
-                <span
-                  :class="[
-                    'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border',
-                    srv.isActive
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-gray-100 text-gray-400 border-gray-200'
-                  ]"
-                >
-                  <span :class="['w-1.5 h-1.5 rounded-full', srv.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400']" />
-                  {{ srv.isActive ? 'Active' : 'Inactive' }}
-                </span>
-              </td>
-              <td class="py-3.5 px-4 text-right space-x-2">
-                <button
-                  v-if="srv.authType === 'OAUTH2'"
-                  @click="startOAuthPopup(srv)"
-                  class="px-2.5 py-1 text-[11px] bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg border border-purple-200 transition-colors font-medium"
-                >
-                  🔑 Login OAuth
-                </button>
-                <button
-                  @click="testServer(srv)"
-                  :disabled="testingId === srv.id"
-                  class="px-2.5 py-1 text-[11px] bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg border border-amber-200 transition-colors font-medium disabled:opacity-50"
-                >
-                  {{ testingId === srv.id ? 'Testing...' : '⚡ Test' }}
-                </button>
-                <button
-                  @click="openModal(srv)"
-                  class="px-2.5 py-1 text-[11px] bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg border border-gray-200 transition-colors font-medium"
-                >
-                  Edit
-                </button>
-                <button
-                  @click="confirmDelete(srv)"
-                  class="px-2.5 py-1 text-[11px] bg-red-50 hover:bg-red-100 text-red-600 rounded-lg border border-red-200 transition-colors font-medium"
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
+            <template v-for="srv in servers" :key="srv.id">
+              <tr class="hover:bg-[#fbf8ff]/60 transition-colors">
+                <td class="py-3.5 px-4">
+                  <p class="font-bold text-[#1a1b22]">{{ srv.name }}</p>
+                  <p v-if="srv.description" class="text-[11px] text-gray-400 mt-0.5 line-clamp-1">{{ srv.description }}</p>
+                </td>
+                <td class="py-3.5 px-4 font-mono text-[11px] text-gray-600 max-w-xs truncate">
+                  {{ srv.endpointUrl }}
+                </td>
+                <td class="py-3.5 px-4">
+                  <span
+                    :class="[
+                      'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border',
+                      srv.authType === 'OAUTH2'
+                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                        : srv.hasApiKey
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : 'bg-gray-50 text-gray-500 border-gray-200'
+                    ]"
+                  >
+                    <span v-if="srv.authType === 'OAUTH2'">🛡️ OAuth 2.0 {{ srv.hasOAuthTokens ? '(Connected)' : '(Needs Login)' }}</span>
+                    <span v-else>{{ srv.hasApiKey ? '🔑 API Key Set' : '🔓 No Auth' }}</span>
+                  </span>
+                </td>
+                <td class="py-3.5 px-4">
+                  <span
+                    :class="[
+                      'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border',
+                      srv.isActive
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-gray-100 text-gray-400 border-gray-200'
+                    ]"
+                  >
+                    <span :class="['w-1.5 h-1.5 rounded-full', srv.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400']" />
+                    {{ srv.isActive ? 'Active' : 'Inactive' }}
+                  </span>
+                </td>
+                <td class="py-3.5 px-4">
+                  <button
+                    @click="toggleToolsDrawer(srv)"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg border border-gray-200 transition-colors font-medium"
+                  >
+                    <span>🧰 Tools ({{ toolCounts[srv.id] ?? 'View' }})</span>
+                    <span class="text-[10px] text-gray-400">{{ expandedServerId === srv.id ? '▲' : '▼' }}</span>
+                  </button>
+                </td>
+                <td class="py-3.5 px-4 text-right space-x-1.5">
+                  <button
+                    @click="syncServerTools(srv)"
+                    :disabled="syncingId === srv.id"
+                    class="px-2.5 py-1 text-[11px] bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg border border-blue-200 transition-colors font-medium disabled:opacity-50"
+                  >
+                    {{ syncingId === srv.id ? 'Syncing...' : '🔄 Sync' }}
+                  </button>
+                  <button
+                    v-if="srv.authType === 'OAUTH2'"
+                    @click="startOAuthPopup(srv)"
+                    class="px-2.5 py-1 text-[11px] bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg border border-purple-200 transition-colors font-medium"
+                  >
+                    🔑 Login
+                  </button>
+                  <button
+                    @click="testServer(srv)"
+                    :disabled="testingId === srv.id"
+                    class="px-2.5 py-1 text-[11px] bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg border border-amber-200 transition-colors font-medium disabled:opacity-50"
+                  >
+                    {{ testingId === srv.id ? 'Testing...' : '⚡ Test' }}
+                  </button>
+                  <button
+                    @click="openModal(srv)"
+                    class="px-2.5 py-1 text-[11px] bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg border border-gray-200 transition-colors font-medium"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    @click="confirmDelete(srv)"
+                    class="px-2.5 py-1 text-[11px] bg-red-50 hover:bg-red-100 text-red-600 rounded-lg border border-red-200 transition-colors font-medium"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+
+              <!-- Expanded Tools Drawer Row -->
+              <tr v-if="expandedServerId === srv.id" class="bg-[#fcfbfe] border-b border-[#e8e7f1]">
+                <td colspan="6" class="p-4">
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                      <h4 class="font-bold text-[#1a1b22] text-xs flex items-center gap-2">
+                        <span>🧰 Discovered Tools for {{ srv.name }}</span>
+                        <span class="text-[10px] text-gray-400 font-mono">(Namespaced: {{ srv.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') }}__*)</span>
+                      </h4>
+                      <button @click="syncServerTools(srv)" class="text-[11px] text-blue-600 hover:underline font-medium">
+                        🔄 Re-sync Now
+                      </button>
+                    </div>
+
+                    <div v-if="toolsLoading" class="text-xs text-gray-400 py-4 text-center">
+                      Loading discovered tools...
+                    </div>
+                    <div v-else-if="!serverTools[srv.id] || serverTools[srv.id].length === 0" class="text-xs text-gray-400 p-4 border border-dashed border-gray-200 rounded-xl text-center">
+                      No tools discovered yet. Click "🔄 Sync" to fetch tools/list from this MCP Server.
+                    </div>
+                    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div
+                        v-for="tool in serverTools[srv.id]"
+                        :key="tool.id"
+                        class="p-3 bg-white rounded-xl border border-[#e8e7f1] shadow-2xs space-y-1.5 relative group hover:border-gray-300 transition-all"
+                      >
+                        <div class="flex items-start justify-between gap-2">
+                          <span class="font-bold text-[#1a1b22] font-mono text-[11px] truncate" :title="tool.namespacedName">
+                            {{ tool.namespacedName }}
+                          </span>
+                          <span
+                            :class="[
+                              'text-[9px] px-2 py-0.5 rounded-full font-semibold border shrink-0',
+                              tool.isAvailable
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-red-50 text-red-600 border-red-200'
+                            ]"
+                          >
+                            {{ tool.isAvailable ? '🟢 Available' : `⚠️ Retry ${tool.failedSyncCount}/3` }}
+                          </span>
+                        </div>
+                        <p class="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
+                          {{ tool.description || 'No description provided.' }}
+                        </p>
+                        <div class="pt-1 flex items-center justify-between text-[10px]">
+                          <button
+                            @click="viewToolSchema(tool)"
+                            class="text-blue-600 hover:underline font-medium flex items-center gap-1"
+                          >
+                            <span>🔍 View JSON Schema</span>
+                          </button>
+                          <span class="text-gray-400 text-[9px]" v-if="tool.lastSyncedAt">
+                            Synced: {{ new Date(tool.lastSyncedAt).toLocaleTimeString() }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -279,10 +369,53 @@
       </div>
     </div>
 
+    <!-- Schema Viewer Modal -->
+    <div v-if="selectedToolSchema" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+      <div class="bg-white rounded-2xl max-w-xl w-full border border-[#e8e7f1] shadow-2xl p-6 relative">
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#e8e7f1]">
+          <h3 class="text-sm font-bold text-[#1a1b22] font-heading flex items-center gap-2">
+            <span>🔍 Tool Input Schema</span>
+            <span class="font-mono text-xs text-gray-500">({{ selectedToolSchema.namespacedName }})</span>
+          </h3>
+          <button @click="selectedToolSchema = null" class="font-bold text-gray-400 hover:text-gray-600 text-base">&times;</button>
+        </div>
+        <div class="bg-[#1a1b26] p-4 rounded-xl text-gray-200 font-mono text-xs overflow-auto max-h-[60vh] border border-[#2e3047]">
+          <pre class="whitespace-pre-wrap break-all">{{ formatJson(selectedToolSchema.inputSchema) }}</pre>
+        </div>
+        <div class="pt-3 mt-3 border-t border-[#e8e7f1] flex justify-end">
+          <button @click="selectedToolSchema = null" class="px-4 py-1.5 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] text-xs font-bold rounded-xl shadow-sm">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Confirmation Modal (Cascading Notice) -->
+    <div v-if="deletingServer" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+      <div class="bg-white rounded-2xl max-w-md w-full border border-[#e8e7f1] shadow-2xl p-6 relative space-y-4 text-xs">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center font-bold text-lg">
+          ⚠️
+        </div>
+        <div>
+          <h3 class="text-base font-bold text-[#1a1b22]">Delete MCP Server "{{ deletingServer.name }}"?</h3>
+          <p class="text-gray-500 mt-1 leading-relaxed">
+            This will permanently remove the MCP Server connection, all discovered tools, and unbind all associated group tool access configurations (<span class="font-mono text-red-600">ON DELETE CASCADE</span>).
+          </p>
+        </div>
+        <div class="flex justify-end gap-2 pt-2 border-t border-[#e8e7f1]">
+          <button @click="deletingServer = null" class="px-4 py-2 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl font-medium">
+            Cancel
+          </button>
+          <button @click="executeDelete" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-sm">
+            Delete Server & Configs
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Connection Test Result Modal -->
     <div v-if="testResult" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
       <div class="bg-white rounded-2xl max-w-2xl w-full border border-[#e8e7f1] shadow-2xl p-6 max-h-[85vh] flex flex-col overflow-hidden">
-        <!-- Header -->
         <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#e8e7f1] shrink-0">
           <h3 class="text-base font-bold text-[#1a1b22] font-heading flex items-center gap-2">
             <span>⚡ Connection Test Result</span>
@@ -298,7 +431,6 @@
           <button @click="testResult = null" class="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center font-bold text-base transition-colors">&times;</button>
         </div>
 
-        <!-- Body Content (Scrollable) -->
         <div class="flex-1 overflow-y-auto space-y-4 pr-1">
           <div v-if="testResult.requiresOAuth" class="p-3 bg-purple-50 text-purple-900 rounded-xl border border-purple-200 text-xs flex items-center justify-between">
             <div>
@@ -318,7 +450,6 @@
           </div>
         </div>
 
-        <!-- Footer -->
         <div class="pt-3 mt-3 border-t border-[#e8e7f1] flex justify-end shrink-0">
           <button
             @click="testResult = null"
@@ -334,15 +465,25 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { adminApi } from '@/api/admin'
 import apiClient from '@/api/client'
 
 const servers = ref([])
 const loading = ref(false)
 const saving = ref(false)
+const syncingId = ref(null)
+const syncingAll = ref(false)
 const testingId = ref(null)
 const error = ref(null)
 const successMsg = ref(null)
 const testResult = ref(null)
+const deletingServer = ref(null)
+
+const expandedServerId = ref(null)
+const serverTools = ref({})
+const toolCounts = ref({})
+const toolsLoading = ref(false)
+const selectedToolSchema = ref(null)
 
 const showModal = ref(false)
 const editingId = ref(null)
@@ -363,10 +504,83 @@ async function fetchServers() {
   try {
     const { data } = await apiClient.get('/api/v1/admin/mcp-servers')
     servers.value = data
+    // Fetch tool counts for servers
+    for (const srv of data) {
+      loadToolCount(srv.id)
+    }
   } catch (e) {
     error.value = e.response?.data?.message || 'Failed to load MCP servers'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadToolCount(serverId) {
+  try {
+    const { data } = await adminApi.getDiscoveredMcpTools(serverId)
+    toolCounts.value[serverId] = data.length
+    serverTools.value[serverId] = data
+  } catch (e) {}
+}
+
+async function toggleToolsDrawer(server) {
+  if (expandedServerId.value === server.id) {
+    expandedServerId.value = null
+    return
+  }
+  expandedServerId.value = server.id
+  toolsLoading.value = true
+  try {
+    const { data } = await adminApi.getDiscoveredMcpTools(server.id)
+    serverTools.value[server.id] = data
+    toolCounts.value[server.id] = data.length
+  } catch (e) {
+    error.value = 'Failed to fetch discovered tools'
+  } finally {
+    toolsLoading.value = false
+  }
+}
+
+async function syncServerTools(server) {
+  syncingId.value = server.id
+  error.value = null
+  try {
+    const { data } = await adminApi.syncMcpServerTools(server.id)
+    serverTools.value[server.id] = data
+    toolCounts.value[server.id] = data.length
+    successMsg.value = `Successfully synced ${data.length} tool(s) for ${server.name}`
+    expandedServerId.value = server.id
+  } catch (e) {
+    error.value = e.response?.data?.message || `Failed to sync tools for ${server.name}`
+  } finally {
+    syncingId.value = null
+  }
+}
+
+async function syncAllTools() {
+  syncingAll.value = true
+  error.value = null
+  try {
+    await adminApi.syncAllMcpTools()
+    successMsg.value = 'All active MCP server tools synced successfully'
+    fetchServers()
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to sync all MCP tools'
+  } finally {
+    syncingAll.value = false
+  }
+}
+
+function viewToolSchema(tool) {
+  selectedToolSchema.value = tool
+}
+
+function formatJson(jsonStr) {
+  if (!jsonStr) return '{}'
+  try {
+    return JSON.stringify(JSON.parse(jsonStr), null, 2)
+  } catch (e) {
+    return jsonStr
   }
 }
 
@@ -422,10 +636,17 @@ async function saveServer() {
   }
 }
 
-async function confirmDelete(server) {
-  if (!confirm(`Are you sure you want to delete MCP Server "${server.name}"?`)) return
+function confirmDelete(server) {
+  deletingServer.value = server
+}
+
+async function executeDelete() {
+  if (!deletingServer.value) return
+  const srv = deletingServer.value
+  deletingServer.value = null
   try {
-    await apiClient.delete(`/api/v1/admin/mcp-servers/${server.id}`)
+    await apiClient.delete(`/api/v1/admin/mcp-servers/${srv.id}`)
+    successMsg.value = `Deleted MCP Server "${srv.name}" and all associated tools`
     fetchServers()
   } catch (e) {
     error.value = e.response?.data?.message || 'Failed to delete MCP server'

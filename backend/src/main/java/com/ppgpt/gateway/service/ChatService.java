@@ -297,7 +297,7 @@ public class ChatService {
                                                 Mono<List<com.ppgpt.gateway.dto.ToolDto>> toolsMono = (model.isSupportsTools())
                                                                 ? ((request.getTools() != null && !request.getTools().isEmpty())
                                                                                 ? Mono.just(request.getTools())
-                                                                                : mcpServerService.getActiveTools().collectList())
+                                                                                : mcpServerService.getActiveToolsForGroup(group.getId()).collectList())
                                                                 : Mono.just(Collections.emptyList());
 
                                                 return toolsMono.flatMapMany(activeTools -> {

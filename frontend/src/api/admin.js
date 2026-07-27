@@ -33,5 +33,12 @@ export const adminApi = {
   getAnalytics: (params = {}) => apiClient.get('/api/v1/admin/dashboard/analytics', { params }),
 
   // Public model list (for chat model selector)
-  getActiveModels: () => apiClient.get('/api/v1/admin/models')
+  getActiveModels: () => apiClient.get('/api/v1/admin/models'),
+
+  // MCP Server Tool Management & Access
+  syncMcpServerTools: (id) => apiClient.post(`/api/v1/admin/mcp-servers/${id}/sync`),
+  syncAllMcpTools: () => apiClient.post('/api/v1/admin/mcp-servers/sync-all'),
+  getDiscoveredMcpTools: (id) => apiClient.get(`/api/v1/admin/mcp-servers/${id}/tools`),
+  getGroupMcpTools: (groupId) => apiClient.get(`/api/v1/admin/groups/${groupId}/mcp-tools`),
+  updateGroupMcpTools: (groupId, updates) => apiClient.put(`/api/v1/admin/groups/${groupId}/mcp-tools`, updates)
 }

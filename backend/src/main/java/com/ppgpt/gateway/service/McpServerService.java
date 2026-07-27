@@ -1,9 +1,15 @@
 package com.ppgpt.gateway.service;
 
 import com.ppgpt.gateway.domain.McpServer;
+import com.ppgpt.gateway.domain.McpTool;
+import com.ppgpt.gateway.domain.GroupMcpToolAccess;
 import com.ppgpt.gateway.dto.CreateMcpServerRequest;
 import com.ppgpt.gateway.dto.McpServerDto;
+import com.ppgpt.gateway.dto.McpToolDto;
+import com.ppgpt.gateway.dto.GroupToolAccessRequest;
 import com.ppgpt.gateway.repository.McpServerRepository;
+import com.ppgpt.gateway.repository.McpToolRepository;
+import com.ppgpt.gateway.repository.GroupMcpToolAccessRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -24,6 +30,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -34,6 +41,8 @@ public class McpServerService {
     private static final Pattern RESOURCE_META_PATTERN = Pattern.compile("resource_metadata=[\"']([^\"']+)[\"']");
 
     private final McpServerRepository mcpServerRepository;
+    private final McpToolRepository mcpToolRepository;
+    private final GroupMcpToolAccessRepository groupMcpToolAccessRepository;
     private final CryptoService cryptoService;
     private final WebClient aiWebClient;
     private final ObjectMapper objectMapper;
@@ -377,8 +386,49 @@ public class McpServerService {
     }
 
     @SuppressWarnings("unchecked")
-    public Mono<String> executeTool(String toolName, Map<String, Object> arguments) {
+    public Flux<com.ppgpt.gateway.dto.ToolDto> getActiveToolsForGroup(String groupId) {
+        if (groupId == null || groupId.isBlank()) return getActiveTools();
+        return getGroupToolAccess(groupId)
+                .filter(McpToolDto::isAvailable)
+                .filter(McpToolDto::isEnabledForGroup)
+                .map(t -> {
+                    Map<String, Object> inputSchemaMap = Collections.emptyMap();
+                    if (t.getInputSchema() != null && !t.getInputSchema().isBlank()) {
+                        try {
+                            inputSchemaMap = objectMapper.readValue(t.getInputSchema(), Map.class);
+                        } catch (Exception ignored) {}
+                    }
+                    return new com.ppgpt.gateway.dto.ToolDto(
+                            "function",
+                            new com.ppgpt.gateway.dto.ToolDto.FunctionDef(
+                                    t.getNamespacedName(), // Guard 2: namespaced tool name
+                                    t.getDescription(),
+                                    inputSchemaMap
+                            )
+                    );
+                });
+    }
+
+    @SuppressWarnings("unchecked")
+    public Mono<String> executeTool(String namespacedOrToolName, Map<String, Object> arguments) {
+        String serverPrefix = "";
+        String actualToolName = namespacedOrToolName;
+
+        if (namespacedOrToolName != null && namespacedOrToolName.contains("__")) {
+            String[] parts = namespacedOrToolName.split("__", 2);
+            serverPrefix = parts[0];
+            actualToolName = parts[1];
+        }
+
+        final String finalToolName = actualToolName;
+        final String finalPrefix = serverPrefix;
+
         return mcpServerRepository.findByIsActiveTrue()
+                .filter(server -> {
+                    if (finalPrefix.isBlank()) return true;
+                    String cleanName = server.getName().replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+                    return cleanName.equals(finalPrefix) || server.getName().equalsIgnoreCase(finalPrefix);
+                })
                 .flatMap(server -> {
                     WebClient.RequestBodySpec spec = aiWebClient.post()
                             .uri(server.getEndpointUrl())
@@ -397,7 +447,7 @@ public class McpServerService {
                             "jsonrpc", "2.0",
                             "method", "tools/call",
                             "params", Map.of(
-                                    "name", toolName,
+                                    "name", finalToolName,
                                     "arguments", arguments != null ? arguments : Map.of()
                             ),
                             "id", 1
@@ -424,7 +474,8 @@ public class McpServerService {
                             .onErrorResume(e -> Mono.empty());
                 })
                 .next()
-                .defaultIfEmpty("{\"error\": \"Tool execution failed or tool not found\"}");
+                // Guard 5: Graceful tool execution fallback
+                .defaultIfEmpty("{\"error\": \"Tool '" + namespacedOrToolName + "' is currently unavailable or disabled by administrator.\"}");
     }
 
     private McpServerDto toDto(McpServer server) {
@@ -442,6 +493,247 @@ public class McpServerService {
                 .hasOAuthTokens(server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank())
                 .oauthExpiresAt(server.getOauthExpiresAt())
                 .createdAt(server.getCreatedAt())
+                .build();
+    }
+
+    // ─── MCP Tools Discovery, Sync & Governance ─────────────────────────────
+
+    /**
+     * Synchronizes tools for a single MCP Server with vulnerability protections:
+     * - Hard 5s timeout to prevent thread starvation.
+     * - Prompt injection sanitization on tool descriptions.
+     * - Namespacing (server_name__tool_name) to avoid collisions across servers.
+     * - Retry threshold protection (failed_sync_count >= 3) to prevent network flakes from wiping configs.
+     */
+    @SuppressWarnings("unchecked")
+    public Mono<List<McpToolDto>> syncTools(String serverId) {
+        return mcpServerRepository.findById(serverId)
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
+                .flatMap(server -> {
+                    WebClient.RequestBodySpec spec = aiWebClient.post()
+                            .uri(server.getEndpointUrl())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("Accept", "application/json, text/event-stream");
+
+                    if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
+                        String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
+                        spec.header("Authorization", "Bearer " + rawKey);
+                    } else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
+                        String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
+                        spec.header("Authorization", "Bearer " + rawToken);
+                    }
+
+                    Map<String, Object> jsonRpcBody = Map.of(
+                            "jsonrpc", "2.0",
+                            "method", "tools/list",
+                            "id", 1
+                    );
+
+                    return spec.bodyValue(jsonRpcBody)
+                            .retrieve()
+                            .bodyToFlux(String.class)
+                            .collectList()
+                            .map(lines -> String.join("\n", lines))
+                            .timeout(Duration.ofSeconds(5)) // Guard 4: Timeout protection
+                            .flatMap(rawBody -> {
+                                Map<String, Object> resp = parseJsonResponse(rawBody);
+                                Map<String, Object> result = (Map<String, Object>) resp.get("result");
+                                List<Map<String, Object>> toolsList = Collections.emptyList();
+                                if (result != null && result.containsKey("tools")) {
+                                    toolsList = (List<Map<String, Object>>) result.get("tools");
+                                }
+                                return processSyncSuccess(server, toolsList);
+                            })
+                            .onErrorResume(e -> {
+                                log.warn("[MCP Sync] Network failure/timeout for server '{}': {}", server.getName(), e.getMessage());
+                                // Guard 1: Threshold-based failure tracking for network flakes
+                                return processSyncFailure(server);
+                            });
+                });
+    }
+
+    public Flux<McpToolDto> syncAllTools() {
+        return mcpServerRepository.findByIsActiveTrue()
+                .flatMap(server -> syncTools(server.getId()).flatMapMany(Flux::fromIterable));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Mono<List<McpToolDto>> processSyncSuccess(McpServer server, List<Map<String, Object>> toolsList) {
+        LocalDateTime now = LocalDateTime.now();
+        List<String> currentToolNames = toolsList.stream()
+                .map(t -> (String) t.get("name"))
+                .filter(name -> name != null && !name.isBlank())
+                .collect(Collectors.toList());
+
+        // 1. Process returned tools (Upsert)
+        Flux<McpTool> upsertedFlux = Flux.fromIterable(toolsList)
+                .flatMap(t -> {
+                    String name = (String) t.get("name");
+                    if (name == null || name.isBlank()) return Mono.empty();
+
+                    String rawDesc = (String) t.get("description");
+                    String sanitizedDesc = sanitizeDescription(rawDesc); // Guard 3: Prompt injection guard
+                    String namespaced = computeNamespacedName(server.getName(), name); // Guard 2: Name collision guard
+
+                    String schemaJson = "";
+                    try {
+                        Object inputSchemaObj = t.get("inputSchema");
+                        if (inputSchemaObj != null) {
+                            schemaJson = objectMapper.writeValueAsString(inputSchemaObj);
+                        }
+                    } catch (Exception ex) {
+                        schemaJson = "{}";
+                    }
+
+                    final String finalSchema = schemaJson;
+
+                    return mcpToolRepository.findByMcpServerIdAndToolName(server.getId(), name)
+                            .flatMap(existing -> {
+                                existing.setNamespacedName(namespaced);
+                                existing.setDescription(sanitizedDesc);
+                                existing.setInputSchema(finalSchema);
+                                existing.setAvailable(true);
+                                existing.setFailedSyncCount(0); // Reset failure threshold
+                                existing.setLastSyncedAt(now);
+                                existing.setNewEntity(false);
+                                return mcpToolRepository.save(existing);
+                            })
+                            .switchIfEmpty(Mono.defer(() -> {
+                                McpTool newTool = McpTool.builder()
+                                        .id(UUID.randomUUID().toString())
+                                        .mcpServerId(server.getId())
+                                        .toolName(name)
+                                        .namespacedName(namespaced)
+                                        .description(sanitizedDesc)
+                                        .inputSchema(finalSchema)
+                                        .isAvailable(true)
+                                        .failedSyncCount(0)
+                                        .lastSyncedAt(now)
+                                        .createdAt(now)
+                                        .isNewEntity(true)
+                                        .build();
+                                return mcpToolRepository.save(newTool);
+                            }));
+                });
+
+        // 2. Handle missing tools (Increment failed_sync_count; prune if >= 3)
+        Mono<Void> pruningsMono = mcpToolRepository.findByMcpServerId(server.getId())
+                .filter(existing -> !currentToolNames.contains(existing.getToolName()))
+                .flatMap(removed -> {
+                    int newCount = removed.getFailedSyncCount() + 1;
+                    removed.setFailedSyncCount(newCount);
+                    removed.setNewEntity(false);
+                    if (newCount >= 3) {
+                        // Mark unavailable and remove from group access
+                        removed.setAvailable(false);
+                        return groupMcpToolAccessRepository.deleteByMcpToolId(removed.getId())
+                                .then(mcpToolRepository.save(removed));
+                    } else {
+                        return mcpToolRepository.save(removed);
+                    }
+                })
+                .then();
+
+        return upsertedFlux.collectList()
+                .delayUntil(list -> pruningsMono)
+                .map(list -> list.stream().map(t -> toToolDto(t, server.getName(), false)).collect(Collectors.toList()));
+    }
+
+    private Mono<List<McpToolDto>> processSyncFailure(McpServer server) {
+        // Network flake / timeout: Increment failed_sync_count for all server tools; prune only if >= 3
+        return mcpToolRepository.findByMcpServerId(server.getId())
+                .flatMap(tool -> {
+                    int newCount = tool.getFailedSyncCount() + 1;
+                    tool.setFailedSyncCount(newCount);
+                    tool.setNewEntity(false);
+                    if (newCount >= 3) {
+                        tool.setAvailable(false);
+                        return groupMcpToolAccessRepository.deleteByMcpToolId(tool.getId())
+                                .then(mcpToolRepository.save(tool));
+                    }
+                    return mcpToolRepository.save(tool);
+                })
+                .map(t -> toToolDto(t, server.getName(), false))
+                .collectList();
+    }
+
+    public Flux<McpToolDto> getDiscoveredTools(String serverId) {
+        return mcpServerRepository.findById(serverId)
+                .flatMapMany(server -> mcpToolRepository.findByMcpServerId(serverId)
+                        .map(t -> toToolDto(t, server.getName(), false)));
+    }
+
+    public Flux<McpToolDto> getGroupToolAccess(String groupId) {
+        return mcpServerRepository.findByIsActiveTrue()
+                .collectMap(McpServer::getId, McpServer::getName)
+                .flatMapMany(serverMap -> 
+                    groupMcpToolAccessRepository.findByGroupId(groupId)
+                        .collectMap(GroupMcpToolAccess::getMcpToolId, GroupMcpToolAccess::isEnabled)
+                        .flatMapMany(enabledMap -> 
+                            mcpToolRepository.findByIsAvailableTrue()
+                                .map(t -> {
+                                    String srvName = serverMap.getOrDefault(t.getMcpServerId(), "Unknown Server");
+                                    boolean enabled = enabledMap.getOrDefault(t.getId(), true); // Default enabled if available
+                                    return toToolDto(t, srvName, enabled);
+                                })
+                        )
+                );
+    }
+
+    public Mono<Void> updateGroupToolAccess(String groupId, List<GroupToolAccessRequest> requests) {
+        if (requests == null || requests.isEmpty()) return Mono.empty();
+        return Flux.fromIterable(requests)
+                .flatMap(req -> 
+                    groupMcpToolAccessRepository.findByGroupIdAndMcpToolId(groupId, req.getMcpToolId())
+                        .flatMap(existing -> {
+                            existing.setEnabled(req.isEnabled());
+                            existing.setNewEntity(false);
+                            return groupMcpToolAccessRepository.save(existing);
+                        })
+                        .switchIfEmpty(Mono.defer(() -> {
+                            GroupMcpToolAccess newAccess = GroupMcpToolAccess.builder()
+                                    .id(UUID.randomUUID().toString())
+                                    .groupId(groupId)
+                                    .mcpToolId(req.getMcpToolId())
+                                    .isEnabled(req.isEnabled())
+                                    .isNewEntity(true)
+                                    .build();
+                            return groupMcpToolAccessRepository.save(newAccess);
+                        }))
+                )
+                .then();
+    }
+
+    // Guard 3 helper: Prompt injection sanitization
+    private String sanitizeDescription(String input) {
+        if (input == null) return "";
+        String cleaned = input.replaceAll("(?i)(ignore\\s+all\\s+previous\\s+instructions|system\\s+override|system\\s+prompt\\s+override|reveal\\s+admin\\s+password|ignore\\s+safety\\s+rules)", "[FILTERED]");
+        if (cleaned.length() > 1000) {
+            cleaned = cleaned.substring(0, 1000) + "...";
+        }
+        return cleaned;
+    }
+
+    // Guard 2 helper: Unique namespacing
+    private String computeNamespacedName(String serverName, String toolName) {
+        String cleanServer = serverName.replaceAll("[^a-zA-Z0-9_]", "_").toLowerCase();
+        return cleanServer + "__" + toolName;
+    }
+
+    private McpToolDto toToolDto(McpTool tool, String serverName, boolean isEnabled) {
+        return McpToolDto.builder()
+                .id(tool.getId())
+                .mcpServerId(tool.getMcpServerId())
+                .mcpServerName(serverName)
+                .toolName(tool.getToolName())
+                .namespacedName(tool.getNamespacedName())
+                .description(tool.getDescription())
+                .inputSchema(tool.getInputSchema())
+                .isAvailable(tool.isAvailable())
+                .failedSyncCount(tool.getFailedSyncCount())
+                .isEnabledForGroup(isEnabled)
+                .lastSyncedAt(tool.getLastSyncedAt())
+                .createdAt(tool.getCreatedAt())
                 .build();
     }
 }

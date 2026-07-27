@@ -144,6 +144,39 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
     INDEX idx_mcp_servers_active (is_active)
 );
 
+-- MCP Server Discovered Tools
+CREATE TABLE IF NOT EXISTS mcp_tools (
+    id                CHAR(36)     NOT NULL,
+    mcp_server_id     CHAR(36)     NOT NULL,
+    tool_name         VARCHAR(150) NOT NULL,
+    namespaced_name   VARCHAR(200) NOT NULL,
+    description       TEXT         NULL,
+    input_schema      LONGTEXT     NULL,
+    is_available      BOOLEAN      NOT NULL DEFAULT TRUE,
+    failed_sync_count INT          NOT NULL DEFAULT 0,
+    last_synced_at    TIMESTAMP    NULL,
+    created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_mcp_tools PRIMARY KEY (id),
+    CONSTRAINT uq_mcp_tool_server UNIQUE (mcp_server_id, tool_name),
+    CONSTRAINT fk_mcp_tools_server FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    INDEX idx_mcp_tools_server (mcp_server_id),
+    INDEX idx_mcp_tools_available (is_available)
+);
+
+-- Group ↔ MCP Tool Access Configuration
+CREATE TABLE IF NOT EXISTS group_mcp_tool_access (
+    id          CHAR(36) NOT NULL,
+    group_id    CHAR(36) NOT NULL,
+    mcp_tool_id CHAR(36) NOT NULL,
+    is_enabled  BOOLEAN  NOT NULL DEFAULT TRUE,
+    CONSTRAINT pk_gmta PRIMARY KEY (id),
+    CONSTRAINT uq_gmta_group_tool UNIQUE (group_id, mcp_tool_id),
+    CONSTRAINT fk_gmta_group FOREIGN KEY (group_id) REFERENCES user_groups(id) ON DELETE CASCADE,
+    CONSTRAINT fk_gmta_tool FOREIGN KEY (mcp_tool_id) REFERENCES mcp_tools(id) ON DELETE CASCADE,
+    INDEX idx_gmta_group (group_id),
+    INDEX idx_gmta_tool (mcp_tool_id)
+);
+
 -- ─── Seed Data ──────────────────────────────────────────────────────────────
 
 -- Default group (referenced by JIT provisioning)
