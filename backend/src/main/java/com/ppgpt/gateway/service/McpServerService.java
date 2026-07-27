@@ -631,28 +631,35 @@ public class McpServerService {
     public Mono<List<McpToolDto>> syncTools(String serverId) {
         return mcpServerRepository.findById(serverId)
                 .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
-                .flatMap(this::initializeHandshake)
+                .flatMap(server -> {
+                    if ("NON_MCP_REST".equals(server.getCapabilityStatus())) {
+                        return Mono.just(server);
+                    }
+                    return initializeHandshake(server);
+                })
                 .flatMap(server -> {
                     if ("NON_MCP_REST".equals(server.getCapabilityStatus()) || Boolean.FALSE.equals(server.getSupportsTools())) {
                         log.info("[MCP Sync] Server '{}' operates in NON_MCP_REST/Manual mode. Verifying endpoint reachability...", server.getName());
-                        return pingLegacyEndpoint(server)
-                                .flatMap(isReachable -> {
-                                    if (isReachable) {
-                                        return mcpToolRepository.findByMcpServerId(serverId)
-                                                .flatMap(tool -> {
-                                                    tool.setFailedSyncCount(0);
-                                                    tool.setAvailable(true);
-                                                    tool.setLastSyncedAt(LocalDateTime.now());
-                                                    tool.setNewEntity(false);
-                                                    return mcpToolRepository.save(tool);
-                                                })
-                                                .map(t -> toToolDto(t, server.getName(), false))
-                                                .collectList();
-                                    } else {
-                                        log.warn("[MCP Sync] NON_MCP_REST endpoint for server '{}' is unreachable.", server.getName());
-                                        return processSyncFailure(server);
-                                    }
-                                });
+                        return mcpToolRepository.findByMcpServerId(server.getId())
+                                .collectList()
+                                .flatMap(toolsList -> 
+                                    pingLegacyEndpoint(server)
+                                            .flatMap(isReachable -> {
+                                                if (toolsList == null || toolsList.isEmpty()) {
+                                                    return Mono.just(Collections.emptyList());
+                                                }
+                                                return Flux.fromIterable(toolsList)
+                                                        .concatMap(tool -> {
+                                                            tool.setFailedSyncCount(isReachable ? 0 : Math.max(3, tool.getFailedSyncCount() + 1));
+                                                            tool.setAvailable(isReachable);
+                                                            tool.setLastSyncedAt(LocalDateTime.now());
+                                                            tool.setNewEntity(false);
+                                                            return mcpToolRepository.save(tool);
+                                                        })
+                                                        .map(t -> toToolDto(t, server.getName(), false))
+                                                        .collectList();
+                                            })
+                                );
                     }
 
                     WebClient.RequestBodySpec spec = prepareRequestSpec(server);
@@ -802,7 +809,7 @@ public class McpServerService {
                     groupMcpToolAccessRepository.findByGroupId(groupId)
                         .collectMap(GroupMcpToolAccess::getMcpToolId, GroupMcpToolAccess::isEnabled)
                         .flatMapMany(enabledMap -> 
-                            mcpToolRepository.findByIsAvailableTrue()
+                            mcpToolRepository.findAll()
                                 .map(t -> {
                                     String srvName = serverMap.getOrDefault(t.getMcpServerId(), "Unknown Server");
                                     boolean enabled = enabledMap.getOrDefault(t.getId(), true); // Default enabled if available
