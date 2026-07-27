@@ -560,9 +560,9 @@ public class McpServerService {
                             if (isLegacyRest) {
                                 if (httpMethod != HttpMethod.GET) {
                                     if (arguments != null && arguments.containsKey("payload")) {
-                                        postBody = arguments.get("payload");
+                                        postBody = normalizeRestPayload(arguments.get("payload"), mcpTool);
                                     } else {
-                                        postBody = arguments != null ? arguments : Map.of();
+                                        postBody = normalizeRestPayload(arguments != null ? arguments : Map.of(), mcpTool);
                                     }
                                 }
                             } else {
@@ -1350,5 +1350,60 @@ public class McpServerService {
                 .lastSyncedAt(tool.getLastSyncedAt())
                 .createdAt(tool.getCreatedAt())
                 .build();
+    }
+
+    private Object normalizeRestPayload(Object rawBody, McpTool mcpTool) {
+        if (!(rawBody instanceof Map<?, ?> map)) {
+            return rawBody;
+        }
+
+        Map<String, Object> normalized = new HashMap<>();
+        Map<String, String> expectedTypes = new HashMap<>();
+
+        if (mcpTool != null && mcpTool.getInputSchema() != null) {
+            try {
+                JsonNode schemaNode = objectMapper.readTree(mcpTool.getInputSchema());
+                JsonNode payloadProps = null;
+                if (schemaNode.has("properties") && schemaNode.get("properties").has("payload") && schemaNode.get("properties").get("payload").has("properties")) {
+                    payloadProps = schemaNode.get("properties").get("payload").get("properties");
+                } else if (schemaNode.has("properties")) {
+                    payloadProps = schemaNode.get("properties");
+                }
+
+                final JsonNode targetProps = payloadProps;
+                if (targetProps != null && targetProps.isObject()) {
+                    targetProps.fieldNames().forEachRemaining(key -> {
+                        JsonNode field = targetProps.get(key);
+                        if (field.has("type")) {
+                            expectedTypes.put(key, field.get("type").asText().toLowerCase());
+                        }
+                    });
+                }
+            } catch (Exception ignored) {}
+        }
+
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() == null) continue;
+            String key = String.valueOf(entry.getKey());
+            Object val = entry.getValue();
+
+            if (val instanceof String strVal) {
+                String trimmed = strVal.trim();
+                if ((trimmed.startsWith("[") && trimmed.endsWith("]")) || (trimmed.startsWith("{") && trimmed.endsWith("}"))) {
+                    try {
+                        val = objectMapper.readValue(trimmed, Object.class);
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            String expectedType = expectedTypes.get(key);
+            if ("array".equalsIgnoreCase(expectedType) && !(val instanceof List) && !(val instanceof Object[])) {
+                val = List.of(val);
+            }
+
+            normalized.put(key, val);
+        }
+
+        return normalized;
     }
 }
