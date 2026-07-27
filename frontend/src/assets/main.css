@@ -162,8 +162,11 @@ table.data-table {
   border-bottom: 1px solid #e8e7f1;
 }
 .data-table thead th {
-  @apply px-4 py-3.5 text-left text-xs font-semibold text-[#4d4732] uppercase tracking-wider;
+  @apply px-4 py-3.5 text-xs font-semibold text-[#4d4732] uppercase tracking-wider;
   font-family: 'Inter', sans-serif;
+}
+.data-table thead th:not(.text-center):not(.text-right) {
+  @apply text-left;
 }
 .data-table tbody tr {
   border-bottom: 1px solid #eeedf7;

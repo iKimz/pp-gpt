@@ -38,6 +38,7 @@ import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -457,33 +458,72 @@ public class AdminService {
         LocalDate start = startDate != null ? startDate : LocalDate.now(ZoneOffset.UTC).minusDays(30);
         LocalDate end = endDate != null ? endDate : LocalDate.now(ZoneOffset.UTC);
 
-        return dashboardMetricRepository.findByUsageDateBetween(start, end)
+        Mono<Map<String, CreditRate>> creditRatesMapMono = creditRateRepository.findAll()
+                .collectMap(CreditRate::getModelId, rate -> rate);
+
+        return creditRatesMapMono.flatMap(creditRatesMap ->
+            dashboardMetricRepository.findByUsageDateBetween(start, end)
                 .flatMap(metric -> Mono.zip(
                         userGroupRepository.findById(metric.getGroupId()).map(UserGroup::getGroupName).defaultIfEmpty("Default Group"),
                         modelRepository.findById(metric.getModelId()).map(Model::getName).defaultIfEmpty(metric.getModelId())
                 ).map(tuple -> {
                     Map<String, Object> item = new HashMap<>();
-                    item.put("id", metric.getId());
                     item.put("groupId", metric.getGroupId());
                     item.put("groupName", tuple.getT1());
                     item.put("modelId", metric.getModelId());
                     item.put("modelName", tuple.getT2());
-                    item.put("usageDate", metric.getUsageDate());
                     item.put("totalInputTokens", metric.getTotalInputTokens());
                     item.put("totalOutputTokens", metric.getTotalOutputTokens());
-                    item.put("totalTokens", metric.getTotalInputTokens() + metric.getTotalOutputTokens());
-                    item.put("totalCredits", (metric.getTotalInputTokens() + metric.getTotalOutputTokens()) * 0.001);
                     return item;
                 }))
                 .collectList()
                 .flatMap(metricsList -> {
                     if (metricsList.isEmpty()) {
-                        // Fallback: Aggregate live metrics from chat_log if dashboard_metrics table is empty
-                        return aggregateLiveAnalyticsFromChatLogs(start, end);
+                        return aggregateLiveAnalyticsFromChatLogs(start, end, creditRatesMap);
                     }
 
-                    long totalInput = metricsList.stream().mapToLong(m -> ((Number) m.get("totalInputTokens")).longValue()).sum();
-                    long totalOutput = metricsList.stream().mapToLong(m -> ((Number) m.get("totalOutputTokens")).longValue()).sum();
+                    Map<String, Map<String, Object>> aggregatedMap = new LinkedHashMap<>();
+
+                    for (Map<String, Object> m : metricsList) {
+                        String groupName = (String) m.get("groupName");
+                        String modelName = (String) m.get("modelName");
+                        String key = groupName + "___" + modelName;
+
+                        long inTok = ((Number) m.get("totalInputTokens")).longValue();
+                        long outTok = ((Number) m.get("totalOutputTokens")).longValue();
+
+                        Map<String, Object> aggRow = aggregatedMap.computeIfAbsent(key, k -> {
+                            Map<String, Object> row = new HashMap<>();
+                            row.put("groupId", m.get("groupId"));
+                            row.put("groupName", groupName);
+                            row.put("modelId", m.get("modelId"));
+                            row.put("modelName", modelName);
+                            row.put("totalInputTokens", 0L);
+                            row.put("totalOutputTokens", 0L);
+                            row.put("totalTokens", 0L);
+                            row.put("totalCredits", 0.0);
+                            return row;
+                        });
+
+                        long currIn = ((Number) aggRow.get("totalInputTokens")).longValue() + inTok;
+                        long currOut = ((Number) aggRow.get("totalOutputTokens")).longValue() + outTok;
+                        long totalTok = currIn + currOut;
+
+                        String modelId = (String) m.get("modelId");
+                        CreditRate rate = modelId != null ? creditRatesMap.get(modelId) : null;
+                        double inMult = (rate != null && rate.getInputMultiplier() != null) ? rate.getInputMultiplier().doubleValue() : 1.0;
+                        double outMult = (rate != null && rate.getOutputMultiplier() != null) ? rate.getOutputMultiplier().doubleValue() : 2.0;
+                        double credits = (currIn * inMult / 1000.0) + (currOut * outMult / 1000.0);
+
+                        aggRow.put("totalInputTokens", currIn);
+                        aggRow.put("totalOutputTokens", currOut);
+                        aggRow.put("totalTokens", totalTok);
+                        aggRow.put("totalCredits", Math.round(credits * 1000.0) / 1000.0);
+                    }
+
+                    List<Map<String, Object>> aggregatedList = new ArrayList<>(aggregatedMap.values());
+                    long totalInput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalInputTokens")).longValue()).sum();
+                    long totalOutput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalOutputTokens")).longValue()).sum();
 
                     Map<String, Object> result = new HashMap<>();
                     result.put("startDate", start);
@@ -491,13 +531,14 @@ public class AdminService {
                     result.put("totalInputTokens", totalInput);
                     result.put("totalOutputTokens", totalOutput);
                     result.put("totalTokens", totalInput + totalOutput);
-                    result.put("metrics", metricsList);
-                    result.put("items", metricsList);
+                    result.put("metrics", aggregatedList);
+                    result.put("items", aggregatedList);
                     return Mono.just(result);
-                });
+                })
+        );
     }
 
-    private Mono<Map<String, Object>> aggregateLiveAnalyticsFromChatLogs(LocalDate start, LocalDate end) {
+    private Mono<Map<String, Object>> aggregateLiveAnalyticsFromChatLogs(LocalDate start, LocalDate end, Map<String, CreditRate> creditRatesMap) {
         Criteria criteria = Criteria.where("created_at")
                 .greaterThanOrEquals(start.atStartOfDay())
                 .and("created_at").lessThanOrEquals(end.atTime(LocalTime.MAX));
@@ -509,22 +550,22 @@ public class AdminService {
                         .defaultIfEmpty(Map.entry("Default Group", log)))
                 .collectList()
                 .flatMap(entries -> {
-                    Map<String, Map<String, Object>> aggMap = new HashMap<>();
+                    Map<String, Map<String, Object>> aggMap = new LinkedHashMap<>();
 
                     for (Map.Entry<String, ChatLog> entry : entries) {
                         String groupName = entry.getKey();
                         ChatLog log = entry.getValue();
-                        String modelName = log.getModelDisplayName() != null ? log.getModelDisplayName() : log.getModelId();
+                        String modelName = log.getModelDisplayName() != null ? log.getModelDisplayName() : (log.getModelId() != null ? log.getModelId() : "Unknown Model");
                         String key = groupName + "___" + modelName;
 
-                        long inputEst = log.getPrompt() != null ? log.getPrompt().length() / 4L : 0L;
-                        long outputEst = log.getResponse() != null ? log.getResponse().length() / 4L : 0L;
+                        long inputEst = log.getPrompt() != null ? Math.max(1L, log.getPrompt().length() / 4L) : 0L;
+                        long outputEst = log.getResponse() != null ? Math.max(1L, log.getResponse().length() / 4L) : 0L;
 
                         Map<String, Object> row = aggMap.computeIfAbsent(key, k -> {
                             Map<String, Object> m = new HashMap<>();
                             m.put("groupId", "g-default");
                             m.put("groupName", groupName);
-                            m.put("modelId", log.getModelId());
+                            m.put("modelId", log.getModelId() != null ? log.getModelId() : "");
                             m.put("modelName", modelName);
                             m.put("totalInputTokens", 0L);
                             m.put("totalOutputTokens", 0L);
@@ -537,15 +578,20 @@ public class AdminService {
                         long currOut = ((Number) row.get("totalOutputTokens")).longValue() + outputEst;
                         long totalTok = currIn + currOut;
 
+                        CreditRate rate = log.getModelId() != null ? creditRatesMap.get(log.getModelId()) : null;
+                        double inMult = (rate != null && rate.getInputMultiplier() != null) ? rate.getInputMultiplier().doubleValue() : 1.0;
+                        double outMult = (rate != null && rate.getOutputMultiplier() != null) ? rate.getOutputMultiplier().doubleValue() : 2.0;
+                        double credits = (currIn * inMult / 1000.0) + (currOut * outMult / 1000.0);
+
                         row.put("totalInputTokens", currIn);
                         row.put("totalOutputTokens", currOut);
                         row.put("totalTokens", totalTok);
-                        row.put("totalCredits", totalTok * 0.001);
+                        row.put("totalCredits", Math.round(credits * 1000.0) / 1000.0);
                     }
 
-                    List<Map<String, Object>> metricsList = new ArrayList<>(aggMap.values());
-                    long totalInput = metricsList.stream().mapToLong(m -> ((Number) m.get("totalInputTokens")).longValue()).sum();
-                    long totalOutput = metricsList.stream().mapToLong(m -> ((Number) m.get("totalOutputTokens")).longValue()).sum();
+                    List<Map<String, Object>> aggregatedList = new ArrayList<>(aggMap.values());
+                    long totalInput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalInputTokens")).longValue()).sum();
+                    long totalOutput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalOutputTokens")).longValue()).sum();
 
                     Map<String, Object> result = new HashMap<>();
                     result.put("startDate", start);
@@ -553,8 +599,8 @@ public class AdminService {
                     result.put("totalInputTokens", totalInput);
                     result.put("totalOutputTokens", totalOutput);
                     result.put("totalTokens", totalInput + totalOutput);
-                    result.put("metrics", metricsList);
-                    result.put("items", metricsList);
+                    result.put("metrics", aggregatedList);
+                    result.put("items", aggregatedList);
                     return Mono.just(result);
                 });
     }
