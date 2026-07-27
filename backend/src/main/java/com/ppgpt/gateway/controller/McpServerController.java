@@ -1,7 +1,13 @@
 package com.ppgpt.gateway.controller;
 
+import com.ppgpt.gateway.domain.McpResource;
+import com.ppgpt.gateway.domain.McpPrompt;
+import com.ppgpt.gateway.dto.CreateManualToolRequest;
+import com.ppgpt.gateway.dto.OpenApiImportRequest;
 import com.ppgpt.gateway.dto.CreateMcpServerRequest;
 import com.ppgpt.gateway.dto.McpServerDto;
+import com.ppgpt.gateway.dto.McpToolDto;
+import com.ppgpt.gateway.dto.GroupToolAccessRequest;
 import com.ppgpt.gateway.service.McpServerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -11,40 +17,94 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/admin/mcp-servers")
+@RequestMapping("/api/v1/admin")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 public class McpServerController {
 
     private final McpServerService mcpServerService;
 
-    @GetMapping
+    @GetMapping("/mcp-servers")
     public Flux<McpServerDto> getAllMcpServers() {
         return mcpServerService.getAllMcpServers();
     }
 
-    @PostMapping
+    @PostMapping("/mcp-servers")
     @ResponseStatus(HttpStatus.CREATED)
     public Mono<McpServerDto> createMcpServer(@Valid @RequestBody CreateMcpServerRequest request) {
         return mcpServerService.createMcpServer(request);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/mcp-servers/{id}")
     public Mono<McpServerDto> updateMcpServer(@PathVariable String id, @Valid @RequestBody CreateMcpServerRequest request) {
         return mcpServerService.updateMcpServer(id, request);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/mcp-servers/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public Mono<Void> deleteMcpServer(@PathVariable String id) {
         return mcpServerService.deleteMcpServer(id);
     }
 
-    @PostMapping("/{id}/test")
+    @PostMapping("/mcp-servers/{id}/test")
     public Mono<Map<String, Object>> testConnection(@PathVariable String id) {
         return mcpServerService.testConnection(id);
+    }
+
+    @PostMapping("/mcp-servers/{id}/sync")
+    public Mono<List<McpToolDto>> syncTools(@PathVariable String id) {
+        return mcpServerService.syncTools(id);
+    }
+
+    @PostMapping("/mcp-servers/sync-all")
+    public Flux<McpToolDto> syncAllTools() {
+        return mcpServerService.syncAllTools();
+    }
+
+    @GetMapping("/mcp-servers/{id}/tools")
+    public Flux<McpToolDto> getDiscoveredTools(@PathVariable String id) {
+        return mcpServerService.getDiscoveredTools(id);
+    }
+
+    @PostMapping("/mcp-servers/{id}/tools/manual")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono<McpToolDto> createManualTool(@PathVariable String id, @Valid @RequestBody CreateManualToolRequest request) {
+        return mcpServerService.createManualTool(id, request);
+    }
+
+    @PostMapping("/mcp-servers/{id}/tools/import-openapi")
+    public Mono<List<McpToolDto>> importOpenApiSpec(@PathVariable String id, @Valid @RequestBody OpenApiImportRequest request) {
+        return mcpServerService.importOpenApiSpec(id, request);
+    }
+
+    @DeleteMapping("/mcp-servers/{id}/tools/{toolId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public Mono<Void> deleteManualTool(@PathVariable String id, @PathVariable String toolId) {
+        return mcpServerService.deleteManualTool(id, toolId);
+    }
+
+    @GetMapping("/mcp-servers/{id}/resources")
+    public Flux<McpResource> getDiscoveredResources(@PathVariable String id) {
+        return mcpServerService.getDiscoveredResources(id);
+    }
+
+    @GetMapping("/mcp-servers/{id}/prompts")
+    public Flux<McpPrompt> getDiscoveredPrompts(@PathVariable String id) {
+        return mcpServerService.getDiscoveredPrompts(id);
+    }
+
+    @GetMapping("/groups/{groupId}/mcp-tools")
+    public Flux<McpToolDto> getGroupToolAccess(@PathVariable String groupId) {
+        return mcpServerService.getGroupToolAccess(groupId);
+    }
+
+    @PutMapping("/groups/{groupId}/mcp-tools")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public Mono<Void> updateGroupToolAccess(@PathVariable String groupId, @RequestBody List<GroupToolAccessRequest> updates) {
+        return mcpServerService.updateGroupToolAccess(groupId, updates);
     }
 }

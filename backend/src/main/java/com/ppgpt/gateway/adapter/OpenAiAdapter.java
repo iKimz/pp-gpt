@@ -129,7 +129,7 @@ public class OpenAiAdapter implements AiProviderAdapter {
                 contentParts.add(Map.of("type", "image_url", "image_url", Map.of("url", imgUrl)));
             }
             messages.add(Map.of("role", "user", "content", contentParts));
-        } else {
+        } else if (request.getMessage() != null && !request.getMessage().isBlank()) {
             messages.add(Map.of("role", "user", "content", request.getMessage()));
         }
         return messages;

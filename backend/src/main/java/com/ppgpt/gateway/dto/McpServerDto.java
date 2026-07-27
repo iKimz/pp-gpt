@@ -24,5 +24,9 @@ public class McpServerDto {
     private String oauthClientId;
     private Boolean hasOAuthTokens;
     private LocalDateTime oauthExpiresAt;
+    private Boolean supportsTools;
+    private Boolean supportsResources;
+    private Boolean supportsPrompts;
+    private String capabilityStatus;
     private LocalDateTime createdAt;
 }

@@ -232,7 +232,7 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
             bedrockMessages.add(Map.of(
                     "role", "user",
                     "content", contentBlocks));
-        } else {
+        } else if (request.getMessage() != null && !request.getMessage().isBlank()) {
             bedrockMessages.add(Map.of(
                     "role", "user",
                     "content", request.getMessage()));

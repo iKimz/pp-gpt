@@ -58,6 +58,22 @@ public class McpServer implements Persistable<String> {
     @Builder.Default
     private Boolean isActive = true;
 
+    @Column("supports_tools")
+    @Builder.Default
+    private Boolean supportsTools = true;
+
+    @Column("supports_resources")
+    @Builder.Default
+    private Boolean supportsResources = false;
+
+    @Column("supports_prompts")
+    @Builder.Default
+    private Boolean supportsPrompts = false;
+
+    @Column("capability_status")
+    @Builder.Default
+    private String capabilityStatus = "DISCOVERED";
+
     @Column("created_at")
     private LocalDateTime createdAt;
 

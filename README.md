@@ -201,12 +201,29 @@ The gateway supports 100+ models across 18+ model providers on AWS Bedrock via d
 
 ---
 
-## Model Context Protocol (MCP) & Agentic Tool Loop
+## Model Context Protocol (MCP) & Legacy REST Tool Governance
 
-The gateway implements a multi-pass Agentic Tool Loop:
+The gateway implements a comprehensive, enterprise-grade Model Context Protocol (MCP 2024-11-05) and Legacy REST Tool Engine:
 
-1. **Pass 1 (Tool Discovery & Execution)**: The gateway attaches active MCP server tools to the LLM prompt. If the model decides to invoke a tool, the gateway executes the tool via MCP server JSON-RPC without streaming raw JSON to the UI.
-2. **Pass 2 (Answer Synthesis)**: The tool execution result is passed back to the model with tools cleared (`tools: []`), forcing the model to synthesize a clean natural language answer for the user without timing out or looping.
+1. **Protocol Capabilities Discovery**:
+   - Performs standard MCP Handshake (`method: "initialize"`) discovering `tools`, `resources`, and `prompts` capabilities.
+   - Automatically issues spec-compliant `notifications/initialized` handshake completions.
+   - Gracefully handles simplified or non-standard MCP servers (`tools/list` fallback).
+
+2. **Legacy REST & Manual Tool Fallback**:
+   - Detects non-MCP REST endpoints and marks them as `⚠️ Legacy REST / Manual`.
+   - **➕ Manual Tool Creator**: Allows administrators to define custom JSON Input Schemas with pre-built quick presets (Empty, String Query, ID + Limit) and real-time JSON validation.
+   - **📄 OpenAPI 3.0 Spec Importer**: Automatically parses raw JSON/YAML OpenAPI specifications, extracting paths, parameters, and request bodies into namespaced LLM tools.
+   - **HTTP Endpoint Reachability Ping**: Regularly verifies legacy endpoint health, updating availability badges (`🟢 Available` vs `🔴 Unreachable`) while retaining manual tool definitions.
+
+3. **Vulnerability Guards & Governance**:
+   - **Prompt Injection Filter**: Sanitizes tool descriptions against jailbreak prompts (e.g. `ignore all previous instructions`, `system override`) before forwarding to LLMs.
+   - **Namespacing Guard**: Prefixes all discovered and manual tools with `server_name__tool_name` to prevent tool name collision across multiple servers.
+   - **Per-Group Selective Permission Matrix**: Fine-grained checkbox matrix allowing administrators to enable or disable specific tools per user group.
+
+4. **Multi-Pass Agentic Tool Loop**:
+   - **Pass 1 (Tool Discovery & Execution)**: The gateway attaches authorized tools to the LLM prompt. If the model invokes a tool, the gateway executes it via JSON-RPC / REST without leaking raw JSON to the end user.
+   - **Pass 2 (Answer Synthesis)**: Tool execution results are passed back to the model with tools cleared, synthesizing a clean, natural language response.
 
 ---
 
