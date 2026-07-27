@@ -66,6 +66,9 @@ public class McpServerService {
     private final WebClient aiWebClient;
     private final ObjectMapper objectMapper;
 
+    @org.springframework.beans.factory.annotation.Value("${app.mcp.oauth-redirect-uri:http://localhost/api/v1/mcp/oauth/callback}")
+    private String defaultOAuthRedirectUri;
+
     /**
      * DTO representing discovered OAuth2 authorization, token, and dynamic registration metadata.
      */
@@ -307,7 +310,7 @@ public class McpServerService {
                                                 if (tokenUrl != null) server.setOauthTokenUrl(tokenUrl);
 
                                                 if ((server.getOauthClientId() == null || server.getOauthClientId().isBlank()) && regUrl != null) {
-                                                    String redirectUri = "http://localhost/api/v1/mcp/oauth/callback";
+                                                    String redirectUri = defaultOAuthRedirectUri;
                                                     return registerDynamicClient(regUrl, redirectUri)
                                                             .flatMap(clientId -> {
                                                                 if (clientId != null && !clientId.isBlank()) {
