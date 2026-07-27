@@ -1,4 +1,5 @@
 <template>
+  <ToastNotification />
   <RouterView v-slot="{ Component, route }">
     <Transition name="page" mode="out-in">
       <component :is="Component" :key="route.path" />
@@ -10,6 +11,7 @@
 import { RouterView } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { onMounted } from 'vue'
+import ToastNotification from '@/components/ui/ToastNotification.vue'
 
 const authStore = useAuthStore()
 

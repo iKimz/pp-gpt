@@ -276,9 +276,13 @@ function resetFilters() {
   loadLogs()
 }
 
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
+
 function exportCsv() {
   if (!filteredLogs.value || filteredLogs.value.length === 0) {
-    alert('No audit logs available to export')
+    toast.warning('No audit logs available to export')
     return
   }
   const headers = ['Log ID', 'User ID', 'Username', 'Model ID', 'Model Name', 'Session ID', 'Prompt', 'Response', 'Created At (GMT+7)']

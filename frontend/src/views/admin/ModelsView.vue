@@ -374,21 +374,30 @@ function prefillPlaceholder() {
   form.credentials = ''
 }
 
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
+
 async function handleSave() {
   if (form.credentials && !isValidJson.value) {
-    alert('Credentials field contains invalid JSON. Please fix it before saving.')
+    toast.error('Credentials field contains invalid JSON. Please fix it before saving.')
     activeTab.value = 'general'
     return
   }
   saving.value = true
   try {
     const payload = { ...form }
-    if (editing.value) await adminApi.updateModel(editing.value.id, payload)
-    else await adminApi.createModel(payload)
+    if (editing.value) {
+      await adminApi.updateModel(editing.value.id, payload)
+      toast.success(`Model '${form.name || form.modelName}' updated successfully!`)
+    } else {
+      await adminApi.createModel(payload)
+      toast.success(`Model '${form.name || form.modelName}' created successfully!`)
+    }
     showModal.value = false
     models.value = (await adminApi.getModels()).data
   } catch (e) {
-    alert(e.response?.data?.message || 'Save failed')
+    toast.error(e.response?.data?.message || 'Save failed')
   } finally {
     saving.value = false
   }
@@ -396,7 +405,12 @@ async function handleSave() {
 
 async function handleDelete(m) {
   if (!confirm(`Delete model "${m.modelName}"?`)) return
-  await adminApi.deleteModel(m.id)
-  models.value = (await adminApi.getModels()).data
+  try {
+    await adminApi.deleteModel(m.id)
+    toast.success(`Model '${m.name || m.modelName}' deleted successfully!`)
+    models.value = (await adminApi.getModels()).data
+  } catch (e) {
+    toast.error(e.response?.data?.message || 'Delete failed')
+  }
 }
 </script>

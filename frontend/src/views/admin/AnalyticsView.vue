@@ -547,9 +547,13 @@ const donutChartOptions = computed(() => {
   }
 })
 
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
+
 function exportCsv() {
   if (!analyticsData.value || analyticsData.value.length === 0) {
-    alert('No analytics data available to export')
+    toast.warning('No analytics data available to export')
     return
   }
   const headers = ['Group ID', 'Group Name', 'Model ID', 'Model Name', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Credits']

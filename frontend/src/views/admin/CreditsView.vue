@@ -193,8 +193,9 @@ async function saveRate(rate, idx) {
     })
     rate.id       = saved.data.id
     rate.isCustom = true
+    toast.success(`Credit rate for '${rate.modelName}' saved successfully!`)
   } catch (e) {
-    alert(e.response?.data?.message || 'Save failed')
+    toast.error(e.response?.data?.message || 'Save failed')
   } finally {
     actionIdx.value = -1
   }
@@ -211,8 +212,9 @@ async function resetRate(rate, idx) {
     rate.inputMultiplier  = 1.0
     rate.outputMultiplier = 2.0
     rate.isCustom         = false
+    toast.success(`Credit rate for '${rate.modelName}' reset to defaults!`)
   } catch (e) {
-    alert(e.response?.data?.message || 'Reset failed')
+    toast.error(e.response?.data?.message || 'Reset failed')
   } finally {
     actionIdx.value = -1
   }

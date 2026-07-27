@@ -212,7 +212,9 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import DataTable from '@/components/DataTable.vue'
 import ModalForm from '@/components/ModalForm.vue'
 import { adminApi } from '@/api/admin'
+import { useToast } from '@/composables/useToast'
 
+const toast = useToast()
 const groups    = ref([])
 const allModels = ref([])
 const loading   = ref(true)
@@ -301,7 +303,7 @@ async function openMcpToolsModal(group) {
       isAvailable: t.isAvailable ?? t.available ?? true
     }))
   } catch (e) {
-    alert('Failed to load MCP tool access list')
+    toast.error('Failed to load MCP tool access list')
   } finally {
     mcpLoading.value = false
   }
@@ -334,9 +336,9 @@ async function saveMcpToolAccess() {
     }))
     await adminApi.updateGroupMcpTools(selectedGroup.value.id, updates)
     showMcpModal.value = false
-    alert(`✅ Tool access matrix for group '${selectedGroup.value.groupName}' saved successfully!`)
+    toast.success(`Tool access matrix for group '${selectedGroup.value.groupName}' saved successfully!`)
   } catch (e) {
-    alert(e.response?.data?.message || 'Failed to save MCP tool access settings')
+    toast.error(e.response?.data?.message || 'Failed to save MCP tool access settings')
   } finally {
     mcpSaving.value = false
   }
@@ -347,13 +349,15 @@ async function handleSave() {
   try {
     if (editing.value) {
       await adminApi.updateGroup(editing.value.id, form)
+      toast.success(`Group '${form.groupName}' updated successfully!`)
     } else {
       await adminApi.createGroup(form)
+      toast.success(`Group '${form.groupName}' created successfully!`)
     }
     showModal.value = false
     await loadGroups()
   } catch (e) {
-    alert(e.response?.data?.message || 'Save failed')
+    toast.error(e.response?.data?.message || 'Save failed')
   } finally {
     saving.value = false
   }

@@ -101,15 +101,24 @@ function openEdit(user) {
   showModal.value = true
 }
 
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
+
 async function handleSave() {
   saving.value = true
   try {
-    if (editing.value) await adminApi.updateUser(editing.value.id, form)
-    else await adminApi.createUser(form)
+    if (editing.value) {
+      await adminApi.updateUser(editing.value.id, form)
+      toast.success(`User '${form.username}' updated successfully!`)
+    } else {
+      await adminApi.createUser(form)
+      toast.success(`User '${form.username}' created successfully!`)
+    }
     showModal.value = false
     users.value = (await adminApi.getUsers()).data
   } catch (e) {
-    alert(e.response?.data?.message || 'Save failed')
+    toast.error(e.response?.data?.message || 'Save failed')
   } finally {
     saving.value = false
   }
@@ -117,7 +126,12 @@ async function handleSave() {
 
 async function handleDelete(user) {
   if (!confirm(`Delete user "${user.username}"?`)) return
-  await adminApi.deleteUser(user.id)
-  users.value = (await adminApi.getUsers()).data
+  try {
+    await adminApi.deleteUser(user.id)
+    toast.success(`User '${user.username}' deleted successfully!`)
+    users.value = (await adminApi.getUsers()).data
+  } catch (e) {
+    toast.error(e.response?.data?.message || 'Delete failed')
+  }
 }
 </script>
