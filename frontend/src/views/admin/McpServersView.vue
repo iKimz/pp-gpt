@@ -105,9 +105,10 @@
             <tr>
               <th class="py-3.5 px-4">Server Name</th>
               <th class="py-3.5 px-4">Endpoint URL</th>
+              <th class="py-3.5 px-4">Protocol Capabilities</th>
               <th class="py-3.5 px-4">Auth Type</th>
               <th class="py-3.5 px-4">Status</th>
-              <th class="py-3.5 px-4">Discovered Tools</th>
+              <th class="py-3.5 px-4">Discovered Items</th>
               <th class="py-3.5 px-4 text-right">Actions</th>
             </tr>
           </thead>
@@ -120,6 +121,24 @@
                 </td>
                 <td class="py-3.5 px-4 font-mono text-[11px] text-gray-600 max-w-xs truncate">
                   {{ srv.endpointUrl }}
+                </td>
+                <td class="py-3.5 px-4">
+                  <div class="flex items-center gap-1 flex-wrap">
+                    <span v-if="srv.capabilityStatus === 'NON_MCP_REST'" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                      ⚠️ Legacy REST / Manual
+                    </span>
+                    <template v-else>
+                      <span v-if="srv.supportsTools !== false" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                        🛠️ Tools
+                      </span>
+                      <span v-if="srv.supportsResources" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        📁 Resources
+                      </span>
+                      <span v-if="srv.supportsPrompts" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                        📝 Prompts
+                      </span>
+                    </template>
+                  </div>
                 </td>
                 <td class="py-3.5 px-4">
                   <span
@@ -154,7 +173,7 @@
                     @click="toggleToolsDrawer(srv)"
                     class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg border border-gray-200 transition-colors font-medium"
                   >
-                    <span>🧰 Tools ({{ toolCounts[srv.id] ?? 'View' }})</span>
+                    <span>🧰 Items ({{ toolCounts[srv.id] ?? 'View' }})</span>
                     <span class="text-[10px] text-gray-400">{{ expandedServerId === srv.id ? '▲' : '▼' }}</span>
                   </button>
                 </td>
@@ -197,16 +216,30 @@
 
               <!-- Expanded Tools Drawer Row -->
               <tr v-if="expandedServerId === srv.id" class="bg-[#fcfbfe] border-b border-[#e8e7f1]">
-                <td colspan="6" class="p-4">
+                <td colspan="7" class="p-4">
                   <div class="space-y-3">
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
                       <h4 class="font-bold text-[#1a1b22] text-xs flex items-center gap-2">
-                        <span>🧰 Discovered Tools for {{ srv.name }}</span>
+                        <span>🧰 Discovered Tools & Items for {{ srv.name }}</span>
                         <span class="text-[10px] text-gray-400 font-mono">(Namespaced: {{ srv.name.toLowerCase().replace(/[^a-z0-9_]/g, '_') }}__*)</span>
                       </h4>
-                      <button @click="syncServerTools(srv)" class="text-[11px] text-blue-600 hover:underline font-medium">
-                        🔄 Re-sync Now
-                      </button>
+                      <div class="flex items-center gap-2">
+                        <button
+                          @click="openManualToolModal(srv)"
+                          class="px-2.5 py-1 text-[11px] bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg border border-amber-300 font-semibold transition-all flex items-center gap-1 shadow-2xs"
+                        >
+                          ➕ Add Tool Manually
+                        </button>
+                        <button
+                          @click="openOpenApiModal(srv)"
+                          class="px-2.5 py-1 text-[11px] bg-indigo-50 hover:bg-indigo-100 text-indigo-800 rounded-lg border border-indigo-300 font-semibold transition-all flex items-center gap-1 shadow-2xs"
+                        >
+                          📄 Import OpenAPI Spec
+                        </button>
+                        <button @click="syncServerTools(srv)" class="text-[11px] text-blue-600 hover:underline font-medium ml-2">
+                          🔄 Re-sync Now
+                        </button>
+                      </div>
                     </div>
 
                     <div v-if="toolsLoading" class="text-xs text-gray-400 py-4 text-center">
@@ -460,6 +493,93 @@
         </div>
       </div>
     </div>
+
+    <!-- Manual Tool Add Modal -->
+    <div v-if="showManualModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+      <div class="bg-white rounded-2xl max-w-lg w-full border border-[#e8e7f1] shadow-2xl p-6 relative">
+        <h3 class="text-base font-bold text-[#1a1b22] font-heading mb-1 flex items-center gap-2">
+          <span>➕ Add Tool Manually</span>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-normal border border-amber-200">Legacy REST Fallback</span>
+        </h3>
+        <p class="text-xs text-gray-400 mb-4">Add custom tool definitions for non-MCP or REST endpoints without tools/list protocol support.</p>
+
+        <form @submit.prevent="saveManualTool" class="space-y-4 text-xs">
+          <div>
+            <label class="block font-medium text-gray-700 mb-1">Tool Name *</label>
+            <input
+              v-model="manualForm.toolName"
+              type="text"
+              required
+              placeholder="e.g. get_user_profile"
+              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono"
+            />
+          </div>
+
+          <div>
+            <label class="block font-medium text-gray-700 mb-1">Description *</label>
+            <textarea
+              v-model="manualForm.description"
+              rows="2"
+              required
+              placeholder="Describe what this tool accomplishes for the LLM..."
+              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700]"
+            />
+          </div>
+
+          <div>
+            <label class="block font-medium text-gray-700 mb-1">Input Schema (JSON)</label>
+            <textarea
+              v-model="manualForm.inputSchema"
+              rows="4"
+              placeholder='{"type":"object","properties":{"user_id":{"type":"string"}},"required":["user_id"]}'
+              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px]"
+            />
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2 border-t border-[#e8e7f1]">
+            <button @click="showManualModal = false" type="button" class="px-4 py-2 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl font-medium">
+              Cancel
+            </button>
+            <button :disabled="savingManual" type="submit" class="px-4 py-2 bg-[#ffd700] hover:bg-[#e9c400] text-[#1a1b22] font-semibold rounded-xl shadow-sm disabled:opacity-50">
+              {{ savingManual ? 'Saving Tool...' : 'Save Manual Tool' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- OpenAPI Spec Import Modal -->
+    <div v-if="showOpenApiModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+      <div class="bg-white rounded-2xl max-w-xl w-full border border-[#e8e7f1] shadow-2xl p-6 relative">
+        <h3 class="text-base font-bold text-[#1a1b22] font-heading mb-1 flex items-center gap-2">
+          <span>📄 Import OpenAPI / Swagger Spec</span>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-normal border border-indigo-200">OpenAPI 3.0 Auto Importer</span>
+        </h3>
+        <p class="text-xs text-gray-400 mb-4">Paste raw OpenAPI/Swagger JSON content to automatically parse REST endpoints into tool definitions.</p>
+
+        <form @submit.prevent="submitOpenApiImport" class="space-y-4 text-xs">
+          <div>
+            <label class="block font-medium text-gray-700 mb-1">OpenAPI Spec (JSON) *</label>
+            <textarea
+              v-model="openApiSpecText"
+              rows="10"
+              required
+              placeholder='{"openapi":"3.0.0","info":{"title":"Sample API"},"paths":{"/users":{"get":{"summary":"Get list of users"}}}}'
+              class="w-full px-3 py-2 rounded-xl border border-[#e8e7f1] focus:outline-none focus:ring-2 focus:ring-[#ffd700] font-mono text-[11px]"
+            />
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2 border-t border-[#e8e7f1]">
+            <button @click="showOpenApiModal = false" type="button" class="px-4 py-2 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl font-medium">
+              Cancel
+            </button>
+            <button :disabled="importingOpenApi" type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-sm disabled:opacity-50">
+              {{ importingOpenApi ? 'Parsing & Importing...' : 'Import Endpoints as Tools' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -497,6 +617,73 @@ const form = ref({
   description: '',
   isActive: true
 })
+
+// Manual Tool & OpenAPI Import Modal State
+const showManualModal = ref(false)
+const manualServerId = ref(null)
+const savingManual = ref(false)
+const manualForm = ref({
+  toolName: '',
+  description: '',
+  inputSchema: ''
+})
+
+const showOpenApiModal = ref(false)
+const openApiServerId = ref(null)
+const importingOpenApi = ref(false)
+const openApiSpecText = ref('')
+
+function openManualToolModal(server) {
+  manualServerId.value = server.id
+  manualForm.value = {
+    toolName: '',
+    description: '',
+    inputSchema: '{\n  "type": "object",\n  "properties": {},\n  "required": []\n}'
+  }
+  showManualModal.value = true
+}
+
+async function saveManualTool() {
+  if (!manualServerId.value) return
+  savingManual.value = true
+  error.value = null
+  try {
+    const { data } = await adminApi.createManualMcpTool(manualServerId.value, manualForm.value)
+    successMsg.value = `Manual tool '${data.toolName}' created successfully!`
+    showManualModal.value = false
+    loadToolCount(manualServerId.value)
+    if (expandedServerId.value === manualServerId.value) {
+      toggleToolsDrawer({ id: manualServerId.value })
+    }
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to create manual tool'
+  } finally {
+    savingManual.value = false
+  }
+}
+
+function openOpenApiModal(server) {
+  openApiServerId.value = server.id
+  openApiSpecText.value = ''
+  showOpenApiModal.value = true
+}
+
+async function submitOpenApiImport() {
+  if (!openApiServerId.value || !openApiSpecText.value) return
+  importingOpenApi.value = true
+  error.value = null
+  try {
+    const { data } = await adminApi.importOpenApiMcpSpec(openApiServerId.value, { openApiSpec: openApiSpecText.value })
+    successMsg.value = `Imported ${data.length} endpoints as tools successfully!`
+    showOpenApiModal.value = false
+    loadToolCount(openApiServerId.value)
+    fetchServers()
+  } catch (e) {
+    error.value = e.response?.data?.message || 'Failed to import OpenAPI spec'
+  } finally {
+    importingOpenApi.value = false
+  }
+}
 
 async function fetchServers() {
   loading.value = true

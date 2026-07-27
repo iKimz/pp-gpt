@@ -1,5 +1,9 @@
 package com.ppgpt.gateway.controller;
 
+import com.ppgpt.gateway.domain.McpResource;
+import com.ppgpt.gateway.domain.McpPrompt;
+import com.ppgpt.gateway.dto.CreateManualToolRequest;
+import com.ppgpt.gateway.dto.OpenApiImportRequest;
 import com.ppgpt.gateway.dto.CreateMcpServerRequest;
 import com.ppgpt.gateway.dto.McpServerDto;
 import com.ppgpt.gateway.dto.McpToolDto;
@@ -64,6 +68,27 @@ public class McpServerController {
     @GetMapping("/mcp-servers/{id}/tools")
     public Flux<McpToolDto> getDiscoveredTools(@PathVariable String id) {
         return mcpServerService.getDiscoveredTools(id);
+    }
+
+    @PostMapping("/mcp-servers/{id}/tools/manual")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono<McpToolDto> createManualTool(@PathVariable String id, @Valid @RequestBody CreateManualToolRequest request) {
+        return mcpServerService.createManualTool(id, request);
+    }
+
+    @PostMapping("/mcp-servers/{id}/tools/import-openapi")
+    public Mono<List<McpToolDto>> importOpenApiSpec(@PathVariable String id, @Valid @RequestBody OpenApiImportRequest request) {
+        return mcpServerService.importOpenApiSpec(id, request);
+    }
+
+    @GetMapping("/mcp-servers/{id}/resources")
+    public Flux<McpResource> getDiscoveredResources(@PathVariable String id) {
+        return mcpServerService.getDiscoveredResources(id);
+    }
+
+    @GetMapping("/mcp-servers/{id}/prompts")
+    public Flux<McpPrompt> getDiscoveredPrompts(@PathVariable String id) {
+        return mcpServerService.getDiscoveredPrompts(id);
     }
 
     @GetMapping("/groups/{groupId}/mcp-tools")

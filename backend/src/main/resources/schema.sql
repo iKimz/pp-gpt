@@ -139,10 +139,20 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
     oauth_expires_at              TIMESTAMP    NULL,
     description                   TEXT         NULL,
     is_active                     BOOLEAN      NOT NULL DEFAULT TRUE,
+    supports_tools                BOOLEAN      NOT NULL DEFAULT TRUE,
+    supports_resources            BOOLEAN      NOT NULL DEFAULT FALSE,
+    supports_prompts              BOOLEAN      NOT NULL DEFAULT FALSE,
+    capability_status             VARCHAR(30)  NOT NULL DEFAULT 'DISCOVERED' COMMENT 'DISCOVERED or NON_MCP_REST',
     created_at                    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_mcp_servers PRIMARY KEY (id),
     INDEX idx_mcp_servers_active (is_active)
 );
+
+-- Schema migration additions for existing databases
+ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS supports_tools BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS supports_resources BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS supports_prompts BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS capability_status VARCHAR(30) NOT NULL DEFAULT 'DISCOVERED';
 
 -- MCP Server Discovered Tools
 CREATE TABLE IF NOT EXISTS mcp_tools (
@@ -175,6 +185,37 @@ CREATE TABLE IF NOT EXISTS group_mcp_tool_access (
     CONSTRAINT fk_gmta_tool FOREIGN KEY (mcp_tool_id) REFERENCES mcp_tools(id) ON DELETE CASCADE,
     INDEX idx_gmta_group (group_id),
     INDEX idx_gmta_tool (mcp_tool_id)
+);
+
+-- MCP Server Discovered Resources (Read-only Files/Data)
+CREATE TABLE IF NOT EXISTS mcp_resources (
+    id            CHAR(36)     NOT NULL,
+    mcp_server_id CHAR(36)     NOT NULL,
+    uri           VARCHAR(500) NOT NULL,
+    name          VARCHAR(150) NOT NULL,
+    description   TEXT         NULL,
+    mime_type     VARCHAR(100) NULL,
+    is_available  BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_mcp_resources PRIMARY KEY (id),
+    CONSTRAINT uq_mcp_resource_uri UNIQUE (mcp_server_id, uri(250)),
+    CONSTRAINT fk_mcp_resources_server FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    INDEX idx_mcp_resources_server (mcp_server_id)
+);
+
+-- MCP Server Discovered Prompts (Prompt Templates)
+CREATE TABLE IF NOT EXISTS mcp_prompts (
+    id             CHAR(36)     NOT NULL,
+    mcp_server_id  CHAR(36)     NOT NULL,
+    prompt_name    VARCHAR(150) NOT NULL,
+    description    TEXT         NULL,
+    arguments_json TEXT         NULL,
+    is_available   BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_mcp_prompts PRIMARY KEY (id),
+    CONSTRAINT uq_mcp_prompt_server UNIQUE (mcp_server_id, prompt_name),
+    CONSTRAINT fk_mcp_prompts_server FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    INDEX idx_mcp_prompts_server (mcp_server_id)
 );
 
 -- ─── Seed Data ──────────────────────────────────────────────────────────────

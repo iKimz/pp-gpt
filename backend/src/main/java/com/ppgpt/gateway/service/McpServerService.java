@@ -2,13 +2,19 @@ package com.ppgpt.gateway.service;
 
 import com.ppgpt.gateway.domain.McpServer;
 import com.ppgpt.gateway.domain.McpTool;
+import com.ppgpt.gateway.domain.McpResource;
+import com.ppgpt.gateway.domain.McpPrompt;
 import com.ppgpt.gateway.domain.GroupMcpToolAccess;
 import com.ppgpt.gateway.dto.CreateMcpServerRequest;
 import com.ppgpt.gateway.dto.McpServerDto;
 import com.ppgpt.gateway.dto.McpToolDto;
 import com.ppgpt.gateway.dto.GroupToolAccessRequest;
+import com.ppgpt.gateway.dto.CreateManualToolRequest;
+import com.ppgpt.gateway.dto.OpenApiImportRequest;
 import com.ppgpt.gateway.repository.McpServerRepository;
 import com.ppgpt.gateway.repository.McpToolRepository;
+import com.ppgpt.gateway.repository.McpResourceRepository;
+import com.ppgpt.gateway.repository.McpPromptRepository;
 import com.ppgpt.gateway.repository.GroupMcpToolAccessRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,9 +26,11 @@ import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,6 +50,8 @@ public class McpServerService {
 
     private final McpServerRepository mcpServerRepository;
     private final McpToolRepository mcpToolRepository;
+    private final McpResourceRepository mcpResourceRepository;
+    private final McpPromptRepository mcpPromptRepository;
     private final GroupMcpToolAccessRepository groupMcpToolAccessRepository;
     private final CryptoService cryptoService;
     private final WebClient aiWebClient;
@@ -492,37 +502,95 @@ public class McpServerService {
                 .oauthClientId(server.getOauthClientId())
                 .hasOAuthTokens(server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank())
                 .oauthExpiresAt(server.getOauthExpiresAt())
+                .supportsTools(server.getSupportsTools() != null ? server.getSupportsTools() : true)
+                .supportsResources(server.getSupportsResources() != null ? server.getSupportsResources() : false)
+                .supportsPrompts(server.getSupportsPrompts() != null ? server.getSupportsPrompts() : false)
+                .capabilityStatus(server.getCapabilityStatus() != null ? server.getCapabilityStatus() : "DISCOVERED")
                 .createdAt(server.getCreatedAt())
                 .build();
     }
 
-    // ─── MCP Tools Discovery, Sync & Governance ─────────────────────────────
+    // ─── MCP Multi-Capability Discovery & Handshake ─────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private Mono<McpServer> initializeHandshake(McpServer server) {
+        WebClient.RequestBodySpec spec = prepareRequestSpec(server);
+        Map<String, Object> jsonRpcBody = Map.of(
+                "jsonrpc", "2.0",
+                "method", "initialize",
+                "params", Map.of(
+                        "protocolVersion", "2024-11-05",
+                        "clientInfo", Map.of("name", "PP-GPT Gateway", "version", "1.0.0")
+                ),
+                "id", 1
+        );
+
+        return spec.bodyValue(jsonRpcBody)
+                .retrieve()
+                .bodyToFlux(String.class)
+                .collectList()
+                .map(lines -> String.join("\n", lines))
+                .timeout(Duration.ofSeconds(4))
+                .flatMap(rawBody -> {
+                    try {
+                        Map<String, Object> resp = parseJsonResponse(rawBody);
+                        if (resp.containsKey("result")) {
+                            Map<String, Object> result = (Map<String, Object>) resp.get("result");
+                            if (result != null && result.containsKey("capabilities")) {
+                                Map<String, Object> caps = (Map<String, Object>) result.get("capabilities");
+                                server.setSupportsTools(caps != null && caps.containsKey("tools"));
+                                server.setSupportsResources(caps != null && caps.containsKey("resources"));
+                                server.setSupportsPrompts(caps != null && caps.containsKey("prompts"));
+                                server.setCapabilityStatus("DISCOVERED");
+                                return mcpServerRepository.save(server);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.debug("[MCP Handshake] Failed to parse initialize response for '{}'", server.getName());
+                    }
+                    return Mono.just(server);
+                })
+                .onErrorResume(e -> {
+                    log.info("[MCP Handshake] Server '{}' does not respond to 'initialize' (might be legacy REST or unsupported protocol).", server.getName());
+                    server.setCapabilityStatus("NON_MCP_REST");
+                    return mcpServerRepository.save(server);
+                });
+    }
+
+    private WebClient.RequestBodySpec prepareRequestSpec(McpServer server) {
+        WebClient.RequestBodySpec spec = aiWebClient.post()
+                .uri(server.getEndpointUrl())
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Accept", "application/json, text/event-stream");
+
+        if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
+            String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
+            spec.header("Authorization", "Bearer " + rawKey);
+        } else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
+            String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
+            spec.header("Authorization", "Bearer " + rawToken);
+        }
+        return spec;
+    }
 
     /**
-     * Synchronizes tools for a single MCP Server with vulnerability protections:
-     * - Hard 5s timeout to prevent thread starvation.
-     * - Prompt injection sanitization on tool descriptions.
-     * - Namespacing (server_name__tool_name) to avoid collisions across servers.
-     * - Retry threshold protection (failed_sync_count >= 3) to prevent network flakes from wiping configs.
+     * Synchronizes tools, resources, and prompts for an MCP Server with vulnerability protections:
+     * - Handshake (`initialize`) to discover protocol capabilities.
+     * - Fallback handling for servers without `tools/list` (NON_MCP_REST).
+     * - Retry threshold protection (failed_sync_count >= 3) for network flakes.
      */
     @SuppressWarnings("unchecked")
     public Mono<List<McpToolDto>> syncTools(String serverId) {
         return mcpServerRepository.findById(serverId)
                 .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
+                .flatMap(this::initializeHandshake)
                 .flatMap(server -> {
-                    WebClient.RequestBodySpec spec = aiWebClient.post()
-                            .uri(server.getEndpointUrl())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .header("Accept", "application/json, text/event-stream");
-
-                    if ("STATIC_KEY".equals(server.getAuthType()) && server.getApiKeyEncrypted() != null && !server.getApiKeyEncrypted().isBlank()) {
-                        String rawKey = cryptoService.decrypt(server.getApiKeyEncrypted());
-                        spec.header("Authorization", "Bearer " + rawKey);
-                    } else if ("OAUTH2".equals(server.getAuthType()) && server.getOauthAccessTokenEncrypted() != null && !server.getOauthAccessTokenEncrypted().isBlank()) {
-                        String rawToken = cryptoService.decrypt(server.getOauthAccessTokenEncrypted());
-                        spec.header("Authorization", "Bearer " + rawToken);
+                    if ("NON_MCP_REST".equals(server.getCapabilityStatus()) || Boolean.FALSE.equals(server.getSupportsTools())) {
+                        log.info("[MCP Sync] Server '{}' operates in NON_MCP_REST/Manual mode. Retaining current manual tools.", server.getName());
+                        return getDiscoveredTools(serverId).collectList();
                     }
 
+                    WebClient.RequestBodySpec spec = prepareRequestSpec(server);
                     Map<String, Object> jsonRpcBody = Map.of(
                             "jsonrpc", "2.0",
                             "method", "tools/list",
@@ -546,7 +614,6 @@ public class McpServerService {
                             })
                             .onErrorResume(e -> {
                                 log.warn("[MCP Sync] Network failure/timeout for server '{}': {}", server.getName(), e.getMessage());
-                                // Guard 1: Threshold-based failure tracking for network flakes
                                 return processSyncFailure(server);
                             });
                 });
@@ -704,7 +771,6 @@ public class McpServerService {
                 .then();
     }
 
-    // Guard 3 helper: Prompt injection sanitization
     private String sanitizeDescription(String input) {
         if (input == null) return "";
         String cleaned = input.replaceAll("(?i)(ignore\\s+all\\s+previous\\s+instructions|system\\s+override|system\\s+prompt\\s+override|reveal\\s+admin\\s+password|ignore\\s+safety\\s+rules)", "[FILTERED]");
@@ -712,6 +778,116 @@ public class McpServerService {
             cleaned = cleaned.substring(0, 1000) + "...";
         }
         return cleaned;
+    }
+
+    public Mono<McpToolDto> createManualTool(String serverId, CreateManualToolRequest request) {
+        return mcpServerRepository.findById(serverId)
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
+                .flatMap(server -> {
+                    server.setCapabilityStatus("NON_MCP_REST");
+                    server.setSupportsTools(true);
+                    return mcpServerRepository.save(server)
+                            .flatMap(savedServer -> {
+                                String name = request.getToolName().trim();
+                                String sanitizedDesc = sanitizeDescription(request.getDescription());
+                                String namespaced = computeNamespacedName(savedServer.getName(), name);
+                                String schema = (request.getInputSchema() != null && !request.getInputSchema().isBlank()) ? request.getInputSchema() : "{}";
+
+                                return mcpToolRepository.findByMcpServerIdAndToolName(serverId, name)
+                                        .flatMap(existing -> {
+                                            existing.setNamespacedName(namespaced);
+                                            existing.setDescription(sanitizedDesc);
+                                            existing.setInputSchema(schema);
+                                            existing.setAvailable(true);
+                                            existing.setFailedSyncCount(0);
+                                            existing.setLastSyncedAt(LocalDateTime.now());
+                                            existing.setNewEntity(false);
+                                            return mcpToolRepository.save(existing);
+                                        })
+                                        .switchIfEmpty(Mono.defer(() -> {
+                                            McpTool newTool = McpTool.builder()
+                                                    .id(UUID.randomUUID().toString())
+                                                    .mcpServerId(serverId)
+                                                    .toolName(name)
+                                                    .namespacedName(namespaced)
+                                                    .description(sanitizedDesc)
+                                                    .inputSchema(schema)
+                                                    .isAvailable(true)
+                                                    .failedSyncCount(0)
+                                                    .lastSyncedAt(LocalDateTime.now())
+                                                    .createdAt(LocalDateTime.now())
+                                                    .isNewEntity(true)
+                                                    .build();
+                                            return mcpToolRepository.save(newTool);
+                                        }))
+                                        .map(tool -> toToolDto(tool, savedServer.getName(), true));
+                            });
+                });
+    }
+
+    public Mono<List<McpToolDto>> importOpenApiSpec(String serverId, OpenApiImportRequest request) {
+        return mcpServerRepository.findById(serverId)
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "MCP Server not found")))
+                .flatMap(server -> {
+                    server.setCapabilityStatus("NON_MCP_REST");
+                    server.setSupportsTools(true);
+                    return mcpServerRepository.save(server)
+                            .flatMap(savedServer -> {
+                                List<CreateManualToolRequest> parsedTools = parseOpenApiPaths(request.getOpenApiSpec());
+                                return Flux.fromIterable(parsedTools)
+                                        .flatMap(toolReq -> createManualTool(serverId, toolReq))
+                                        .collectList();
+                            });
+                });
+    }
+
+    public Flux<McpResource> getDiscoveredResources(String serverId) {
+        return mcpResourceRepository.findByMcpServerId(serverId);
+    }
+
+    public Flux<McpPrompt> getDiscoveredPrompts(String serverId) {
+        return mcpPromptRepository.findByMcpServerId(serverId);
+    }
+
+    private List<CreateManualToolRequest> parseOpenApiPaths(String openApiSpec) {
+        List<CreateManualToolRequest> result = new ArrayList<>();
+        try {
+            JsonNode root = objectMapper.readTree(openApiSpec);
+            JsonNode paths = root.get("paths");
+            if (paths != null && paths.isObject()) {
+                paths.fieldNames().forEachRemaining(path -> {
+                    JsonNode pathNode = paths.get(path);
+                    if (pathNode != null && pathNode.isObject()) {
+                        pathNode.fieldNames().forEachRemaining(method -> {
+                            if (List.of("get", "post", "put", "delete", "patch").contains(method.toLowerCase())) {
+                                JsonNode opNode = pathNode.get(method);
+                                String opId = opNode.has("operationId") ? opNode.get("operationId").asText() : "";
+                                String summary = opNode.has("summary") ? opNode.get("summary").asText() : (opNode.has("description") ? opNode.get("description").asText() : "");
+                                String toolName = !opId.isBlank() ? opId : (method.toLowerCase() + "_" + path.replaceAll("[^a-zA-Z0-9]", "_"));
+
+                                toolName = toolName.replaceAll("^_+|_+$", "").replaceAll("_+", "_");
+
+                                CreateManualToolRequest req = CreateManualToolRequest.builder()
+                                        .toolName(toolName)
+                                        .description(summary.isBlank() ? "OpenAPI endpoint " + method.toUpperCase() + " " + path : summary)
+                                        .inputSchema("{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"default\":\"" + path + "\"},\"method\":{\"type\":\"string\",\"default\":\"" + method.toUpperCase() + "\"}}}")
+                                        .build();
+                                result.add(req);
+                            }
+                        });
+                    }
+                });
+            }
+        } catch (Exception e) {
+            log.warn("[OpenAPI Parser] Failed to parse spec: {}", e.getMessage());
+            CreateManualToolRequest fallback = CreateManualToolRequest.builder()
+                    .toolName("custom_api_endpoint")
+                    .description("Imported Custom API Endpoint")
+                    .inputSchema("{}")
+                    .build();
+            result.add(fallback);
+        }
+        return result;
     }
 
     // Guard 2 helper: Unique namespacing
