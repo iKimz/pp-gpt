@@ -281,6 +281,19 @@ watch(() => props.show, (val) => {
             })
             restForm.samplePayload = JSON.stringify(reconstructed, null, 2)
           }
+        } else {
+          const reconstructed = {}
+          let count = 0
+          Object.keys(propsObj).forEach(k => {
+            if (!['method', 'path', 'headers'].includes(k)) {
+              const f = propsObj[k]
+              reconstructed[k] = f.default !== undefined ? f.default : 'sample_value'
+              count++
+            }
+          })
+          if (count > 0) {
+            restForm.samplePayload = JSON.stringify(reconstructed, null, 2)
+          }
         }
       } catch (e) {}
     } else {
