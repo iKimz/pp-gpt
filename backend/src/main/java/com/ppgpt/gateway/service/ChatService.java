@@ -280,10 +280,26 @@ public class ChatService {
         return chatLogRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size));
     }
 
+    /**
+     * Internal pipeline step to construct JSON SSE chunk payloads.
+     *
+     * @param content Text chunk content
+     * @param done    Boolean flag indicating whether stream has completed
+     * @return Serialized JSON chunk string
+     */
     private String buildChunk(String content, boolean done) {
         return JsonUtil.toJsonString(Map.of("content", content != null ? content : "", "done", done));
     }
 
+    /**
+     * Asynchronously persists chat audit log records to the database.
+     *
+     * @param userId   Authenticated user ID
+     * @param request  Original chat request
+     * @param model    Model entity used for generation
+     * @param response Complete synthesized response text
+     * @return Mono emitting persisted ChatLog entity
+     */
     private Mono<ChatLog> saveChatLog(String userId, ChatRequest request, Model model, String response) {
         String displayName = (model.getName() != null && !model.getName().isBlank())
                 ? model.getName()
@@ -302,6 +318,12 @@ public class ChatService {
         return entityTemplate.insert(chatLog);
     }
 
+    /**
+     * Fallback credit rate calculation if no custom rate is configured for the model.
+     *
+     * @param modelId Model ID
+     * @return Default CreditRate entity
+     */
     private CreditRate defaultRate(String modelId) {
         return CreditRate.builder()
                 .modelId(modelId)
@@ -310,6 +332,20 @@ public class ChatService {
                 .build();
     }
 
+    /**
+     * Multi-step Agentic Tool Execution Loop:
+     * <ol>
+     *   <li>Pass 1: Invokes LLM provider with available tool definitions.</li>
+     *   <li>Parse Tool Calls: Identifies requested tool invocations from LLM stream.</li>
+     *   <li>Execute Tools: Invokes MCP tools via McpServerService.</li>
+     *   <li>Pass 2: Re-invokes LLM provider with tool execution results to synthesize answer.</li>
+     * </ol>
+     *
+     * @param request              Original chat request
+     * @param model                Target AI Model entity
+     * @param decryptedCredentials Decrypted credentials for AI provider
+     * @return Flux of streamed response text chunks
+     */
     private Flux<String> executeAgenticToolLoop(ChatRequest request, Model model, String decryptedCredentials) {
         AtomicReference<StringBuilder> toolCallAcc = new AtomicReference<>(new StringBuilder());
 

@@ -117,26 +117,58 @@ public class QuotaService {
                 .switchIfEmpty(fetchUsageFromDb(userId));
     }
 
+    /**
+     * Builds Redis key for user daily quota storage.
+     *
+     * @param userId User ID
+     * @return Formatted Redis key string
+     */
     private String buildKey(String userId) {
         return KEY_PREFIX + userId + ":" + LocalDate.now(ZoneOffset.UTC);
     }
 
+    /**
+     * Calculates remaining seconds until UTC midnight for Redis key TTL expiration.
+     *
+     * @return Seconds until midnight
+     */
     private long secondsUntilMidnight() {
         long secs = LocalTime.now(ZoneOffset.UTC).until(LocalTime.MIDNIGHT, ChronoUnit.SECONDS);
         return Math.max(1L, secs + 86400L);
     }
 
+    /**
+     * DB Fallback: Checks daily quota against MariaDB token_usage table.
+     *
+     * @param userId          User ID
+     * @param maxDailyCredits Max daily allowed credits
+     * @param amount          Credit amount to check
+     * @return Mono emitting true if within limit, false otherwise
+     */
     private Mono<Boolean> checkQuotaFromDb(String userId, BigDecimal maxDailyCredits, BigDecimal amount) {
         return fetchUsageFromDb(userId)
                 .map(used -> used.add(amount).compareTo(maxDailyCredits) <= 0);
     }
 
+    /**
+     * Fetches today's total credit usage from MariaDB.
+     *
+     * @param userId User ID
+     * @return Mono emitting total credits used today
+     */
     private Mono<BigDecimal> fetchUsageFromDb(String userId) {
         return tokenUsageRepository.findByUserIdAndUsageDate(userId, LocalDate.now(ZoneOffset.UTC))
                 .map(TokenUsage::getCreditsUsed)
                 .defaultIfEmpty(BigDecimal.ZERO);
     }
 
+    /**
+     * Persists atomic credit usage updates to MariaDB database.
+     *
+     * @param userId  User ID
+     * @param credits Credits used
+     * @return Mono completing when DB update finishes
+     */
     private Mono<Void> persistToDb(String userId, BigDecimal credits) {
         return tokenUsageRepository.upsertCredits(
                 UUID.randomUUID().toString(),

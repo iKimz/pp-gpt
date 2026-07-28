@@ -617,6 +617,13 @@ public class AdminService {
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
+    /**
+     * Assigns a list of model IDs to a target user group in database.
+     *
+     * @param groupId  User group ID
+     * @param modelIds List of model IDs
+     * @return Mono completing upon storage
+     */
     private Mono<Void> assignModels(String groupId, List<String> modelIds) {
         if (modelIds == null || modelIds.isEmpty()) return Mono.empty();
         return Flux.fromIterable(modelIds)
@@ -628,6 +635,12 @@ public class AdminService {
                 .then();
     }
 
+    /**
+     * Converts a database Model entity into its public ModelDto representation.
+     *
+     * @param model Model database entity
+     * @return ModelDto instance
+     */
     private ModelDto toModelDto(Model model) {
         return ModelDto.builder()
                 .id(model.getId())

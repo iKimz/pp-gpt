@@ -100,6 +100,12 @@ public class CryptoService {
         }
     }
 
+    /**
+     * Converts a hex string representation into raw byte array.
+     *
+     * @param hex Hex string
+     * @return Byte array
+     */
     private byte[] hexToBytes(String hex) {
         if (hex == null || hex.length() % 2 != 0) {
             throw new IllegalArgumentException(
