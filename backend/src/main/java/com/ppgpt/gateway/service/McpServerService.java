@@ -561,6 +561,34 @@ public class McpServerService {
                             if (isLegacyRest) {
                                 if (httpMethod != HttpMethod.GET) {
                                     Map<String, Object> bodyMap = new HashMap<>();
+
+                                    if (mcpTool != null && mcpTool.getInputSchema() != null && !mcpTool.getInputSchema().isBlank()) {
+                                        try {
+                                            JsonNode schemaNode = objectMapper.readTree(mcpTool.getInputSchema());
+                                            JsonNode payloadProps = null;
+                                            if (schemaNode.has("properties") && schemaNode.get("properties").has("payload") && schemaNode.get("properties").get("payload").has("properties")) {
+                                                payloadProps = schemaNode.get("properties").get("payload").get("properties");
+                                            } else if (schemaNode.has("properties")) {
+                                                payloadProps = schemaNode.get("properties");
+                                            }
+
+                                            final JsonNode targetProps = payloadProps;
+                                            if (targetProps != null && targetProps.isObject()) {
+                                                targetProps.fieldNames().forEachRemaining(key -> {
+                                                    if (!"method".equalsIgnoreCase(key) && !"path".equalsIgnoreCase(key) && !"headers".equalsIgnoreCase(key) && !"payload".equalsIgnoreCase(key)) {
+                                                        JsonNode field = targetProps.get(key);
+                                                        if (field.has("default") && !field.get("default").isNull()) {
+                                                            try {
+                                                                Object defaultVal = objectMapper.treeToValue(field.get("default"), Object.class);
+                                                                bodyMap.put(key, defaultVal);
+                                                            } catch (Exception ignored) {}
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        } catch (Exception ignored) {}
+                                    }
+
                                     if (arguments != null) {
                                         if (arguments.get("payload") instanceof Map<?, ?> payloadMap) {
                                             payloadMap.forEach((k, v) -> {
@@ -1435,10 +1463,9 @@ public class McpServerService {
         try {
             Map<String, Object> cleanSchema = new HashMap<>(schemaMap);
             Object propsObj = cleanSchema.get("properties");
+            Map<String, Object> cleanProps = new HashMap<>();
 
             if (propsObj instanceof Map<?, ?> propsMap) {
-                Map<String, Object> cleanProps = new HashMap<>();
-
                 if (propsMap.containsKey("payload") && propsMap.get("payload") instanceof Map<?, ?> payloadMap) {
                     Object subPropsObj = payloadMap.get("properties");
                     if (subPropsObj instanceof Map<?, ?> subPropsMap) {
@@ -1460,6 +1487,18 @@ public class McpServerService {
                 }
 
                 cleanSchema.put("properties", cleanProps);
+            }
+
+            if (cleanSchema.containsKey("required") && cleanSchema.get("required") instanceof List<?> requiredList) {
+                List<String> cleanRequired = requiredList.stream()
+                        .map(String::valueOf)
+                        .filter(cleanProps::containsKey)
+                        .collect(Collectors.toList());
+                if (cleanRequired.isEmpty()) {
+                    cleanSchema.remove("required");
+                } else {
+                    cleanSchema.put("required", cleanRequired);
+                }
             }
 
             return cleanSchema;
