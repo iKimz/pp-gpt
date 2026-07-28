@@ -240,6 +240,17 @@ Standard Prometheus metrics exposed at `/actuator/prometheus`:
 
 ---
 
+## Quality & Automated Testing
+
+The project incorporates comprehensive unit test coverage and production-ready JavaDoc documentation across all core backend services, controllers, security, and utility packages:
+
+- **79 Automated Unit Tests**: Fully reactive unit tests using JUnit 5, Mockito, and Reactor StepVerifier (`mvn clean test`).
+- **Core Services Covered**: `AdminService`, `AuthService`, `ChatService`, `CryptoService`, `McpServerService`, `QuotaService`.
+- **Security & Utility Verification**: JWT Token generation/validation, AES-256-GCM encryption/decryption, Prompt Injection filtering, and thread-safe Jackson JSON parsing.
+- **JavaDoc Standard**: Best-practice `@param`, `@return`, and `@throws` documentation across all classes and methods.
+
+---
+
 ## License
 
 This project is intended for educational and internal enterprise use.
