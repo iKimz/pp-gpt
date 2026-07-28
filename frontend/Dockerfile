@@ -1,9 +1,5 @@
 # Stage 1: Build the Vite SPA
 FROM node:20-alpine AS builder
-
-ENV HTTP_PROXY=http://localhost:3128
-ENV HTTPS_PROXY=http://localhost:3128
-
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
@@ -12,10 +8,6 @@ RUN npm run build
 
 # Stage 2: Serve with Nginx
 FROM nginx:alpine
-
-ENV HTTP_PROXY=http://localhost:3128
-ENV HTTPS_PROXY=http://localhost:3128
-
 # Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
 # Copy custom nginx config
