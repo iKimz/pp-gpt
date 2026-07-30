@@ -1,5 +1,6 @@
 package com.ppgpt.gateway.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ppgpt.gateway.adapter.AiProviderAdapterFactory;
 import com.ppgpt.gateway.domain.ChatLog;
@@ -189,6 +190,8 @@ public class ChatService {
                         request.setHistory(slicedHistory);
 
                         AtomicReference<StringBuilder> responseAccumulator = new AtomicReference<>(new StringBuilder());
+                        AtomicReference<Integer> providerPromptTokens = new AtomicReference<>(null);
+                        AtomicReference<Integer> providerCompletionTokens = new AtomicReference<>(null);
                         AtomicBoolean finalized = new AtomicBoolean(false);
                         long startTime = System.currentTimeMillis();
 
@@ -213,7 +216,34 @@ public class ChatService {
                                 })
                                 .doOnNext(contentFragment -> {
                                     if (contentFragment != null && !contentFragment.isEmpty()) {
-                                        responseAccumulator.get().append(contentFragment);
+                                        if (contentFragment.contains("\"usage\"")) {
+                                            try {
+                                                JsonNode node = objectMapper.readTree(contentFragment);
+                                                JsonNode usage = node.path("usage");
+                                                if (!usage.isMissingNode() && !usage.isNull()) {
+                                                    if (usage.has("prompt_tokens")) {
+                                                        providerPromptTokens.set(usage.path("prompt_tokens").asInt());
+                                                    }
+                                                    if (usage.has("completion_tokens")) {
+                                                        providerCompletionTokens.set(usage.path("completion_tokens").asInt());
+                                                    }
+                                                }
+                                            } catch (Exception ignored) {}
+                                        }
+
+                                        if (contentFragment.startsWith("{") && contentFragment.contains("\"content\"")) {
+                                            try {
+                                                JsonNode node = objectMapper.readTree(contentFragment);
+                                                String text = node.path("content").asText("");
+                                                if (!text.isEmpty()) {
+                                                    responseAccumulator.get().append(text);
+                                                }
+                                            } catch (Exception e) {
+                                                responseAccumulator.get().append(contentFragment);
+                                            }
+                                        } else {
+                                            responseAccumulator.get().append(contentFragment);
+                                        }
                                     }
                                 })
                                 .map(contentFragment -> buildChunk(contentFragment, false))
@@ -227,15 +257,28 @@ public class ChatService {
                                                 .increment();
 
                                         String fullResponse = responseAccumulator.get().toString();
-                                        int outputTokens = tokenizerUtil.countTokens(model.getModelName(), fullResponse);
-                                        BigDecimal actualCredits = BigDecimal.valueOf(inputTokens)
+
+                                        // Provider-First Usage with Local Tokenizer Fallback
+                                        int finalInputTokens = (providerPromptTokens.get() != null && providerPromptTokens.get() > 0)
+                                                ? providerPromptTokens.get()
+                                                : inputTokens;
+
+                                        int finalOutputTokens = (providerCompletionTokens.get() != null && providerCompletionTokens.get() > 0)
+                                                ? providerCompletionTokens.get()
+                                                : tokenizerUtil.countTokens(model.getModelName(), fullResponse);
+
+                                        BigDecimal actualCredits = BigDecimal.valueOf(finalInputTokens)
                                                 .multiply(inMult)
-                                                .add(BigDecimal.valueOf(outputTokens).multiply(outMult))
+                                                .add(BigDecimal.valueOf(finalOutputTokens).multiply(outMult))
                                                 .setScale(4, RoundingMode.HALF_UP);
 
-                                        log.debug("Chat finalized [{}] provider={}. in={} out={} credits={}", signalType, model.getProvider(), inputTokens, outputTokens, actualCredits);
+                                        String usageSource = (providerPromptTokens.get() != null || providerCompletionTokens.get() != null)
+                                                ? "PROVIDER" : "LOCAL_FALLBACK";
 
-                                        eventPublisher.publishEvent(new TokenUsageRecordedEvent(group.getId(), model.getId(), inputTokens, outputTokens));
+                                        log.info("Chat finalized [{}] provider={}. in={} out={} (source={}) credits={}",
+                                                signalType, model.getProvider(), finalInputTokens, finalOutputTokens, usageSource, actualCredits);
+
+                                        eventPublisher.publishEvent(new TokenUsageRecordedEvent(group.getId(), model.getId(), finalInputTokens, finalOutputTokens));
 
                                         quotaService.finalizeDeduction(userId, estimated, actualCredits)
                                                 .then(saveChatLog(userId, request, model, fullResponse))

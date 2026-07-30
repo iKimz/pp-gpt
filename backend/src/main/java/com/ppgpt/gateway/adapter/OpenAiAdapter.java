@@ -63,6 +63,7 @@ public class OpenAiAdapter implements AiProviderAdapter {
             body.put("temperature", model.getTemperature());
         }
         body.put("stream", true);
+        body.put("stream_options", Map.of("include_usage", true));
         if (request.getTools() != null && !request.getTools().isEmpty()) {
             body.put("tools", request.getTools());
         }
@@ -158,6 +159,16 @@ public class OpenAiAdapter implements AiProviderAdapter {
     private String extractContent(String json) {
         try {
             JsonNode node = objectMapper.readTree(json);
+
+            // Check if chunk contains provider usage metadata
+            JsonNode usage = node.path("usage");
+            if (!usage.isMissingNode() && !usage.isNull() && usage.has("prompt_tokens")) {
+                Map<String, Object> chunk = new LinkedHashMap<>();
+                chunk.put("content", "");
+                chunk.put("usage", objectMapper.treeToValue(usage, Object.class));
+                return objectMapper.writeValueAsString(chunk);
+            }
+
             JsonNode choice = node.path("choices").path(0);
             JsonNode delta = choice.path("delta");
 

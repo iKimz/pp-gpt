@@ -313,6 +313,19 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
                 return null;
             JsonNode node = objectMapper.readTree(raw);
 
+            // 0. Bedrock / Anthropic Usage & Invocation Metrics
+            JsonNode metrics = node.path("amazon-bedrock-invocationMetrics");
+            if (!metrics.isMissingNode() && !metrics.isNull()) {
+                long inTok = metrics.path("inputTokenCount").asLong(0);
+                long outTok = metrics.path("outputTokenCount").asLong(0);
+                if (inTok > 0 || outTok > 0) {
+                    Map<String, Object> chunk = new LinkedHashMap<>();
+                    chunk.put("content", "");
+                    chunk.put("usage", Map.of("prompt_tokens", inTok, "completion_tokens", outTok));
+                    return objectMapper.writeValueAsString(chunk);
+                }
+            }
+
             // 1. OpenAI format tool_calls (returned by OpenAI-style Bedrock proxies / OSS models)
             JsonNode choices = node.path("choices");
             if (choices.isArray() && choices.size() > 0) {
