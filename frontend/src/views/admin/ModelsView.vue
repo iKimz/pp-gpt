@@ -185,23 +185,33 @@
       <!-- TAB 2: Advanced -->
       <div v-show="activeTab === 'advanced'" class="space-y-5">
         <div>
-          <label class="label flex items-center justify-between">
-            <span>Temperature</span>
-            <span class="font-mono text-brand-400 font-bold text-base tabular-nums">
-              {{ Number(form.temperature).toFixed(1) }}
-            </span>
-          </label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="label flex items-center gap-2 mb-0">
+              <span>Temperature</span>
+              <span v-if="form.supportsTemperature" class="font-mono text-brand-400 font-bold text-base tabular-nums">
+                {{ Number(form.temperature).toFixed(1) }}
+              </span>
+              <span v-else class="text-xs text-gray-400 font-medium">(Omitted from API payload)</span>
+            </label>
+            <div class="flex items-center gap-2">
+              <input type="checkbox" v-model="form.supportsTemperature" id="model-supp-temp" class="accent-brand-500 w-4 h-4" />
+              <label for="model-supp-temp" class="text-xs text-gray-600 font-medium cursor-pointer">Enable Parameter</label>
+            </div>
+          </div>
           <input
+            v-if="form.supportsTemperature"
             type="range" v-model.number="form.temperature"
             min="0" max="2" step="0.1"
             class="w-full accent-brand-500 cursor-pointer mt-1"
           />
-          <div class="flex justify-between text-[10px] text-gray-600 mt-0.5">
+          <div v-if="form.supportsTemperature" class="flex justify-between text-[10px] text-gray-600 mt-0.5">
             <span>0.0 — Precise</span>
             <span>1.0 — Balanced</span>
             <span>2.0 — Creative</span>
           </div>
-          <p class="text-[11px] text-gray-500 mt-1.5">Higher values make output more random and creative.</p>
+          <p class="text-[11px] text-gray-500 mt-1.5">
+            {{ form.supportsTemperature ? 'Higher values make output more random and creative.' : 'Uncheck for Reasoning models (o1, o3, GPT-5.6) that reject custom temperature parameters.' }}
+          </p>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
@@ -353,7 +363,7 @@ function openCreate() {
   Object.assign(form, {
     name: '', provider: 'OPENAI', modelName: '', endpointUrl: '', credentials: '', active: true,
     temperature: 0.7, timeoutMs: 30000, maxHistoryMessages: 10, systemPrompt: '', modelType: 'GENERATION',
-    supportsVision: false, supportsTools: true
+    supportsVision: false, supportsTools: true, supportsTemperature: true
   })
   showModal.value = true
 }
@@ -368,7 +378,8 @@ function openEdit(model) {
     systemPrompt: model.systemPrompt || '',
     modelType: model.modelType || 'GENERATION',
     supportsVision: !!model.supportsVision,
-    supportsTools: model.supportsTools !== false
+    supportsTools: model.supportsTools !== false,
+    supportsTemperature: model.supportsTemperature !== false
   })
   showModal.value = true
 }

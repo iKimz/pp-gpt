@@ -113,6 +113,7 @@ public class AdminService {
                 .modelType(dto.getModelType() != null ? dto.getModelType() : "GENERATION")
                 .supportsVision(dto.isSupportsVision())
                 .supportsTools(dto.isSupportsTools())
+                .supportsTemperature(dto.isSupportsTemperature())
                 .createdAt(LocalDateTime.now(ZoneOffset.UTC))
                 .build();
         return entityTemplate.insert(model).map(this::toModelDto);
@@ -141,6 +142,7 @@ public class AdminService {
                     if (dto.getModelType() != null) existing.setModelType(dto.getModelType());
                     existing.setSupportsVision(dto.isSupportsVision());
                     existing.setSupportsTools(dto.isSupportsTools());
+                    existing.setSupportsTemperature(dto.isSupportsTemperature());
                     if (dto.getCredentials() != null && !dto.getCredentials().isBlank()) {
                         existing.setCredentialsEncrypted(cryptoService.encrypt(dto.getCredentials()));
                     }
@@ -672,6 +674,7 @@ public class AdminService {
                 .modelType(model.getModelType())
                 .supportsVision(model.isSupportsVision())
                 .supportsTools(model.isSupportsTools())
+                .supportsTemperature(model.isSupportsTemperature())
                 .hasCredentials(model.getCredentialsEncrypted() != null && !model.getCredentialsEncrypted().isBlank())
                 .build();
     }

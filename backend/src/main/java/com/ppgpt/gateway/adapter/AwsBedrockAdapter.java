@@ -252,7 +252,9 @@ public class AwsBedrockAdapter implements AiProviderAdapter {
 
         bodyMap.put("messages", bedrockMessages);
         bodyMap.put("max_tokens", 4096);
-        bodyMap.put("temperature", model.getTemperature());
+        if (model.isSupportsTemperature()) {
+            bodyMap.put("temperature", model.getTemperature());
+        }
 
         // Convert and attach Tools if present
         if (request.getTools() != null && !request.getTools().isEmpty()) {

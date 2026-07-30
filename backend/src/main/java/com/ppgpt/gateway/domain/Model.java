@@ -79,6 +79,11 @@ public class Model {
     @Builder.Default
     private boolean supportsTools = true;
 
+    /** Indicates if the model supports sampling temperature parameter */
+    @Column("supports_temperature")
+    @Builder.Default
+    private boolean supportsTemperature = true;
+
     @Column("created_at")
     private LocalDateTime createdAt;
 }

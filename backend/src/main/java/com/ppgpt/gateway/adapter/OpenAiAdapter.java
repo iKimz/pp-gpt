@@ -59,7 +59,9 @@ public class OpenAiAdapter implements AiProviderAdapter {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model.getModelName());
         body.put("messages", messages);
-        body.put("temperature", model.getTemperature());
+        if (shouldSendTemperature(model)) {
+            body.put("temperature", model.getTemperature());
+        }
         body.put("stream", true);
         if (request.getTools() != null && !request.getTools().isEmpty()) {
             body.put("tools", request.getTools());
@@ -180,5 +182,18 @@ public class OpenAiAdapter implements AiProviderAdapter {
             log.trace("Non-JSON SSE chunk: {}", json);
         }
         return null;
+    }
+
+    private boolean shouldSendTemperature(Model model) {
+        if (!model.isSupportsTemperature()) {
+            return false;
+        }
+        if (model.getModelName() != null) {
+            String nameLower = model.getModelName().toLowerCase();
+            if (nameLower.contains("o1") || nameLower.contains("o3") || nameLower.contains("reasoning") || nameLower.contains("5.6")) {
+                return false;
+            }
+        }
+        return true;
     }
 }

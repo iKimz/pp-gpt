@@ -54,6 +54,10 @@ public class ModelDto {
     @Builder.Default
     private boolean supportsTools = true;
 
+    /** Indicates if the model supports sampling temperature parameter */
+    @Builder.Default
+    private boolean supportsTemperature = true;
+
     /** Indicates whether credentials are configured for this model */
     private boolean hasCredentials;
 }
