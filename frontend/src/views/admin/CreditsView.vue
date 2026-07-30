@@ -160,7 +160,7 @@
                     v-model.number="rate.inputMultiplier"
                     @input="onMultiplierChange(rate, 'input')"
                     type="number"
-                    step="0.001"
+                    step="0.000001"
                     min="0"
                     class="input-field py-1 w-24 font-mono text-xs font-semibold text-brand-400"
                   />
@@ -171,7 +171,7 @@
                     v-model.number="rate.outputMultiplier"
                     @input="onMultiplierChange(rate, 'output')"
                     type="number"
-                    step="0.001"
+                    step="0.000001"
                     min="0"
                     class="input-field py-1 w-24 font-mono text-xs font-semibold text-purple-400"
                   />
@@ -303,19 +303,19 @@ async function loadData() {
   }
 }
 
-// Recalculate multipliers when price per 1M changes
+// Recalculate per-token multipliers when price per 1M changes
 function onPriceChange(rate, type) {
   if (type === 'input') {
     const priceUsd = Number(rate.inputPricePer1m || 0)
-    // Formula: Multiplier = (priceUsd * exchangeRate) / (1000 * creditBaseThb)
-    // Example: $2.50 / 1M = $0.0025 / 1k = ฿0.08875 / 1k = 8.875 credits / 1k tokens = 0.008875 per token
-    if (priceUsd > 0) {
-      rate.inputMultiplier = Number(((priceUsd * exchangeRate.value) / (1000 * creditBaseThb.value)).toFixed(4))
+    // Multiplier per token = (priceUsd * exchangeRate) / (1,000,000 * creditBaseThb)
+    // Example: $2.50 / 1M = ฿88.75 / 1M = 0.008875 credits / token (at 1 credit = ฿0.01)
+    if (priceUsd >= 0) {
+      rate.inputMultiplier = Number(((priceUsd * exchangeRate.value) / (1000000 * creditBaseThb.value)).toFixed(6))
     }
   } else if (type === 'output') {
     const priceUsd = Number(rate.outputPricePer1m || 0)
-    if (priceUsd > 0) {
-      rate.outputMultiplier = Number(((priceUsd * exchangeRate.value) / (1000 * creditBaseThb.value)).toFixed(4))
+    if (priceUsd >= 0) {
+      rate.outputMultiplier = Number(((priceUsd * exchangeRate.value) / (1000000 * creditBaseThb.value)).toFixed(6))
     }
   }
 }
@@ -324,13 +324,13 @@ function onPriceChange(rate, type) {
 function onMultiplierChange(rate, type) {
   if (type === 'input') {
     const mult = Number(rate.inputMultiplier || 0)
-    if (mult > 0 && exchangeRate.value > 0) {
-      rate.inputPricePer1m = Number(((mult * 1000 * creditBaseThb.value) / exchangeRate.value).toFixed(2))
+    if (mult >= 0 && exchangeRate.value > 0) {
+      rate.inputPricePer1m = Number(((mult * 1000000 * creditBaseThb.value) / exchangeRate.value).toFixed(4))
     }
   } else if (type === 'output') {
     const mult = Number(rate.outputMultiplier || 0)
-    if (mult > 0 && exchangeRate.value > 0) {
-      rate.outputPricePer1m = Number(((mult * 1000 * creditBaseThb.value) / exchangeRate.value).toFixed(2))
+    if (mult >= 0 && exchangeRate.value > 0) {
+      rate.outputPricePer1m = Number(((mult * 1000000 * creditBaseThb.value) / exchangeRate.value).toFixed(4))
     }
   }
 }
