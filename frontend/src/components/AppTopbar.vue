@@ -60,7 +60,11 @@ const models    = ref([])
 onMounted(async () => {
   try {
     const { data } = await apiClient.get('/api/v1/chat/models')
-    const sorted = (data || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    const sorted = (data || []).sort((a, b) => {
+      const nameA = a.name || a.modelName || ''
+      const nameB = b.name || b.modelName || ''
+      return nameA.localeCompare(nameB)
+    })
     models.value = sorted
     chatStore.availableModels = sorted
     if (models.value.length && !chatStore.selectedModelId) {

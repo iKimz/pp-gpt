@@ -72,8 +72,8 @@ public class AdminService {
         return modelRepository.findAll()
                 .map(this::toModelDto)
                 .sort((a, b) -> {
-                    String nameA = a.getName() != null ? a.getName() : "";
-                    String nameB = b.getName() != null ? b.getName() : "";
+                    String nameA = (a.getName() != null && !a.getName().isBlank()) ? a.getName() : (a.getModelName() != null ? a.getModelName() : "");
+                    String nameB = (b.getName() != null && !b.getName().isBlank()) ? b.getName() : (b.getModelName() != null ? b.getModelName() : "");
                     return nameA.compareToIgnoreCase(nameB);
                 });
     }
