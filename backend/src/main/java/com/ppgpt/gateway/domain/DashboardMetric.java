@@ -34,4 +34,7 @@ public class DashboardMetric {
 
     @Column("total_output_tokens")
     private long totalOutputTokens;
+
+    @Column("total_requests")
+    private long totalRequests;
 }

@@ -129,12 +129,15 @@ CREATE TABLE IF NOT EXISTS dashboard_metrics (
     usage_date          DATE     NOT NULL,
     total_input_tokens  BIGINT   NOT NULL DEFAULT 0,
     total_output_tokens BIGINT   NOT NULL DEFAULT 0,
+    total_requests      BIGINT   NOT NULL DEFAULT 0,
     CONSTRAINT pk_dashboard_metrics PRIMARY KEY (id),
     CONSTRAINT uq_dashboard_metrics UNIQUE (group_id, model_id, usage_date),
     CONSTRAINT fk_dm_group FOREIGN KEY (group_id) REFERENCES user_groups(id) ON DELETE CASCADE,
     CONSTRAINT fk_dm_model FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
     INDEX idx_dm_group_date (group_id, usage_date)
 );
+
+ALTER TABLE dashboard_metrics ADD COLUMN IF NOT EXISTS total_requests BIGINT NOT NULL DEFAULT 0;
 
 -- MCP Servers (Internal & External Tool Endpoints)
 CREATE TABLE IF NOT EXISTS mcp_servers (

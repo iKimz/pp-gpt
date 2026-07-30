@@ -33,6 +33,7 @@ public class DashboardMetricEventListener {
 
         repository.findByGroupIdAndModelIdAndUsageDate(event.groupId(), event.modelId(), today)
                 .flatMap(existing -> {
+                    existing.setTotalRequests(existing.getTotalRequests() + 1);
                     existing.setTotalInputTokens(existing.getTotalInputTokens() + event.inputTokens());
                     existing.setTotalOutputTokens(existing.getTotalOutputTokens() + event.outputTokens());
                     return repository.save(existing);
@@ -43,6 +44,7 @@ public class DashboardMetricEventListener {
                                 .groupId(event.groupId())
                                 .modelId(event.modelId())
                                 .usageDate(today)
+                                .totalRequests(1L)
                                 .totalInputTokens(event.inputTokens())
                                 .totalOutputTokens(event.outputTokens())
                                 .build())

@@ -506,6 +506,7 @@ public class AdminService {
                     item.put("groupName", tuple.getT1());
                     item.put("modelId", metric.getModelId());
                     item.put("modelName", tuple.getT2());
+                    item.put("totalRequests", metric.getTotalRequests() > 0 ? metric.getTotalRequests() : 1L);
                     item.put("totalInputTokens", metric.getTotalInputTokens());
                     item.put("totalOutputTokens", metric.getTotalOutputTokens());
                     return item;
@@ -523,6 +524,7 @@ public class AdminService {
                         String modelName = (String) m.get("modelName");
                         String key = groupName + "___" + modelName;
 
+                        long reqCount = ((Number) m.getOrDefault("totalRequests", 1L)).longValue();
                         long inTok = ((Number) m.get("totalInputTokens")).longValue();
                         long outTok = ((Number) m.get("totalOutputTokens")).longValue();
 
@@ -540,7 +542,7 @@ public class AdminService {
                             return row;
                         });
 
-                        long currReq = ((Number) aggRow.get("totalRequests")).longValue() + 1L;
+                        long currReq = ((Number) aggRow.get("totalRequests")).longValue() + reqCount;
                         long currIn = ((Number) aggRow.get("totalInputTokens")).longValue() + inTok;
                         long currOut = ((Number) aggRow.get("totalOutputTokens")).longValue() + outTok;
                         long totalTok = currIn + currOut;
