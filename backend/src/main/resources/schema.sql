@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS models (
 
 -- Schema Migration for Existing Databases
 ALTER TABLE models ADD COLUMN IF NOT EXISTS supports_tools BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE models ADD COLUMN IF NOT EXISTS supports_temperature BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- User Groups
 CREATE TABLE IF NOT EXISTS user_groups (
