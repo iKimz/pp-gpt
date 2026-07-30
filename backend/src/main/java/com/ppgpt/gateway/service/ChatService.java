@@ -103,7 +103,12 @@ public class ChatService {
                         .modelName(m.getModelName())
                         .supportsVision(m.isSupportsVision())
                         .supportsTools(m.isSupportsTools())
-                        .build());
+                        .build())
+                .sort((a, b) -> {
+                    String nameA = a.getName() != null ? a.getName() : "";
+                    String nameB = b.getName() != null ? b.getName() : "";
+                    return nameA.compareToIgnoreCase(nameB);
+                });
     }
 
     /**

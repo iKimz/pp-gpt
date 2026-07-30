@@ -158,7 +158,7 @@ async function loadData() {
           isCustom:         false
         }
       }
-    })
+    }).sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''))
   } finally {
     loading.value = false
   }

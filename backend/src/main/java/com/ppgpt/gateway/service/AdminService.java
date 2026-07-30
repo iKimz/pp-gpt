@@ -69,7 +69,13 @@ public class AdminService {
      * @return Flux of model DTOs
      */
     public Flux<ModelDto> listModels() {
-        return modelRepository.findAll().map(this::toModelDto);
+        return modelRepository.findAll()
+                .map(this::toModelDto)
+                .sort((a, b) -> {
+                    String nameA = a.getName() != null ? a.getName() : "";
+                    String nameB = b.getName() != null ? b.getName() : "";
+                    return nameA.compareToIgnoreCase(nameB);
+                });
     }
 
     /**
@@ -80,7 +86,7 @@ public class AdminService {
      */
     public Mono<ModelDto> getModel(String id) {
         return modelRepository.findById(id)
-                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Model not found")))
+                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Model not found: " + id)))
                 .map(this::toModelDto);
     }
 
@@ -236,13 +242,23 @@ public class AdminService {
     public Flux<CreditRateDto> listCreditRates() {
         return creditRateRepository.findAll()
                 .flatMap(rate -> modelRepository.findById(rate.getModelId())
-                        .map(model -> CreditRateDto.builder()
-                                .id(rate.getId())
-                                .modelId(rate.getModelId())
-                                .modelName(model.getModelName())
-                                .inputMultiplier(rate.getInputMultiplier())
-                                .outputMultiplier(rate.getOutputMultiplier())
-                                .build()));
+                        .map(model -> {
+                            String displayName = (model.getName() != null && !model.getName().isBlank())
+                                    ? model.getName()
+                                    : model.getModelName();
+                            return CreditRateDto.builder()
+                                    .id(rate.getId())
+                                    .modelId(rate.getModelId())
+                                    .modelName(displayName)
+                                    .inputMultiplier(rate.getInputMultiplier())
+                                    .outputMultiplier(rate.getOutputMultiplier())
+                                    .build();
+                        }))
+                .sort((a, b) -> {
+                    String nameA = a.getModelName() != null ? a.getModelName() : "";
+                    String nameB = b.getModelName() != null ? b.getModelName() : "";
+                    return nameA.compareToIgnoreCase(nameB);
+                });
     }
 
     /**

@@ -275,7 +275,10 @@ async function loadGroups() {
 }
 
 async function loadModels() {
-  try { allModels.value = (await adminApi.getModels()).data }
+  try {
+    const res = await adminApi.getModels()
+    allModels.value = (res.data || []).sort((a, b) => (a.name || a.modelName || '').localeCompare(b.name || b.modelName || ''))
+  }
   catch {}
 }
 

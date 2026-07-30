@@ -340,7 +340,10 @@ function providerBadgeClass(provider) {
 
 onMounted(async () => {
   loading.value = true
-  try { models.value = (await adminApi.getModels()).data }
+  try {
+    const res = await adminApi.getModels()
+    models.value = (res.data || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+  }
   finally { loading.value = false }
 })
 

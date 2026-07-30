@@ -69,13 +69,14 @@ public class AdminServiceTest {
 
         StepVerifier.create(adminService.listModels())
                 .assertNext(dto -> {
+                    assertEquals("m-2", dto.getId());
+                    assertEquals("Claude Sonnet", dto.getName());
+                    assertEquals("AWS_BEDROCK", dto.getProvider());
+                })
+                .assertNext(dto -> {
                     assertEquals("m-1", dto.getId());
                     assertEquals("GPT-4o", dto.getName());
                     assertEquals("OPENAI", dto.getProvider());
-                })
-                .assertNext(dto -> {
-                    assertEquals("m-2", dto.getId());
-                    assertEquals("Claude Sonnet", dto.getName());
                 })
                 .verifyComplete();
     }
