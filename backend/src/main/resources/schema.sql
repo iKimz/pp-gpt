@@ -75,10 +75,15 @@ CREATE TABLE IF NOT EXISTS credit_rates (
     model_id          CHAR(36)      NOT NULL,
     input_multiplier  DECIMAL(10,6) NOT NULL DEFAULT 1.000000,
     output_multiplier DECIMAL(10,6) NOT NULL DEFAULT 2.000000,
+    input_price_per_1m  DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
+    output_price_per_1m DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
     CONSTRAINT pk_credit_rates PRIMARY KEY (id),
     CONSTRAINT uq_credit_rates_model UNIQUE (model_id),
     CONSTRAINT fk_credit_rates_model FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE
 );
+
+ALTER TABLE credit_rates ADD COLUMN IF NOT EXISTS input_price_per_1m DECIMAL(10,4) NOT NULL DEFAULT 0.0000;
+ALTER TABLE credit_rates ADD COLUMN IF NOT EXISTS output_price_per_1m DECIMAL(10,4) NOT NULL DEFAULT 0.0000;
 
 -- Daily Token Usage
 CREATE TABLE IF NOT EXISTS token_usage (

@@ -254,6 +254,8 @@ public class AdminService {
                                     .modelName(displayName)
                                     .inputMultiplier(rate.getInputMultiplier())
                                     .outputMultiplier(rate.getOutputMultiplier())
+                                    .inputPricePer1m(rate.getInputPricePer1m())
+                                    .outputPricePer1m(rate.getOutputPricePer1m())
                                     .build();
                         }))
                 .sort((a, b) -> {
@@ -274,6 +276,8 @@ public class AdminService {
                 .flatMap(existing -> {
                     existing.setInputMultiplier(dto.getInputMultiplier());
                     existing.setOutputMultiplier(dto.getOutputMultiplier());
+                    existing.setInputPricePer1m(dto.getInputPricePer1m());
+                    existing.setOutputPricePer1m(dto.getOutputPricePer1m());
                     return creditRateRepository.save(existing);
                 })
                 .switchIfEmpty(Mono.defer(() -> {
@@ -282,6 +286,8 @@ public class AdminService {
                             .modelId(dto.getModelId())
                             .inputMultiplier(dto.getInputMultiplier())
                             .outputMultiplier(dto.getOutputMultiplier())
+                            .inputPricePer1m(dto.getInputPricePer1m())
+                            .outputPricePer1m(dto.getOutputPricePer1m())
                             .build();
                     return entityTemplate.insert(rate);
                 }))

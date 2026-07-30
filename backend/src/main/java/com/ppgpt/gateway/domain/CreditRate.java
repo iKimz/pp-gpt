@@ -30,4 +30,12 @@ public class CreditRate {
     /** Credits consumed per output token (multiply by output token count). */
     @Column("output_multiplier")
     private BigDecimal outputMultiplier;
+
+    /** Provider cost in USD per 1M input tokens (e.g. $2.50). */
+    @Column("input_price_per_1m")
+    private BigDecimal inputPricePer1m;
+
+    /** Provider cost in USD per 1M output tokens (e.g. $10.00). */
+    @Column("output_price_per_1m")
+    private BigDecimal outputPricePer1m;
 }

@@ -17,4 +17,6 @@ public class CreditRateDto {
     private String modelName;      // enriched for display
     private BigDecimal inputMultiplier;
     private BigDecimal outputMultiplier;
+    private BigDecimal inputPricePer1m;
+    private BigDecimal outputPricePer1m;
 }
