@@ -374,8 +374,8 @@
                 <th @click="sortBy('totalCredits')" class="text-right cursor-pointer hover:text-[#1a1b22]">
                   Total Credits {{ sortKey === 'totalCredits' ? (sortOrder === 1 ? '▲' : '▼') : '' }}
                 </th>
-                <th class="text-right text-emerald-700 font-bold">
-                  Est. Cost ({{ currency }})
+                <th @click="sortBy('totalCostUsd')" class="text-right cursor-pointer hover:text-emerald-900 font-bold text-emerald-700">
+                  Est. Cost ({{ currency }}) {{ sortKey === 'totalCostUsd' ? (sortOrder === 1 ? '▲' : '▼') : '' }}
                 </th>
               </tr>
             </thead>
