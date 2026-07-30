@@ -231,22 +231,21 @@ public class ChatService {
                                             } catch (Exception ignored) {}
                                         }
 
-                                        if (contentFragment.startsWith("{") && contentFragment.contains("\"content\"")) {
-                                            try {
-                                                JsonNode node = objectMapper.readTree(contentFragment);
-                                                String text = node.path("content").asText("");
-                                                if (!text.isEmpty()) {
-                                                    responseAccumulator.get().append(text);
-                                                }
-                                            } catch (Exception e) {
-                                                responseAccumulator.get().append(contentFragment);
-                                            }
-                                        } else {
-                                            responseAccumulator.get().append(contentFragment);
+                                        String textToAppend = extractVisibleText(contentFragment);
+                                        if (textToAppend != null && !textToAppend.isEmpty()) {
+                                            responseAccumulator.get().append(textToAppend);
                                         }
                                     }
                                 })
-                                .map(contentFragment -> buildChunk(contentFragment, false))
+                                .map(contentFragment -> buildChunk(extractVisibleText(contentFragment), false))
+                                .filter(chunkJson -> {
+                                    try {
+                                        JsonNode node = objectMapper.readTree(chunkJson);
+                                        return !node.path("content").asText("").isEmpty();
+                                    } catch (Exception e) {
+                                        return true;
+                                    }
+                                })
                                 .concatWith(Mono.just(buildChunk("", true)))
                                 .doFinally(signalType -> {
                                     if (finalized.compareAndSet(false, true)) {
@@ -335,6 +334,22 @@ public class ChatService {
      * @param done    Boolean flag indicating whether stream has completed
      * @return Serialized JSON chunk string
      */
+    private String extractVisibleText(String contentFragment) {
+        if (contentFragment == null || contentFragment.isEmpty()) {
+            return "";
+        }
+        if (contentFragment.trim().startsWith("{")) {
+            try {
+                JsonNode node = objectMapper.readTree(contentFragment);
+                if (node.has("usage") || node.has("tool_calls")) {
+                    JsonNode contentNode = node.path("content");
+                    return (!contentNode.isMissingNode() && !contentNode.isNull()) ? contentNode.asText("") : "";
+                }
+            } catch (Exception ignored) {}
+        }
+        return contentFragment;
+    }
+
     private String buildChunk(String content, boolean done) {
         return JsonUtil.toJsonString(Map.of("content", content != null ? content : "", "done", done));
     }
