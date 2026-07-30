@@ -98,4 +98,19 @@ class OpenAiAdapterTest {
         assertThat(msgs.get(0).get("role")).isEqualTo("user");
         assertThat(msgs.get(0).get("content")).isInstanceOf(List.class);
     }
+
+    @Test
+    void extractContent_parsesProviderUsageChunk() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        OpenAiAdapter adapter = new OpenAiAdapter(null, mapper);
+        java.lang.reflect.Method method = OpenAiAdapter.class.getDeclaredMethod("extractContent", String.class);
+        method.setAccessible(true);
+
+        String jsonWithUsage = "{\"id\":\"chatcmpl-1\",\"choices\":[],\"usage\":{\"prompt_tokens\":142,\"completion_tokens\":88,\"total_tokens\":230}}";
+        String result = (String) method.invoke(adapter, jsonWithUsage);
+
+        assertThat(result).contains("\"usage\"");
+        assertThat(result).contains("\"prompt_tokens\":142");
+        assertThat(result).contains("\"completion_tokens\":88");
+    }
 }
