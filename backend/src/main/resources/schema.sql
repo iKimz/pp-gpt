@@ -73,8 +73,8 @@ CREATE TABLE IF NOT EXISTS group_model_access (
 CREATE TABLE IF NOT EXISTS credit_rates (
     id                CHAR(36)      NOT NULL,
     model_id          CHAR(36)      NOT NULL,
-    input_multiplier  DECIMAL(10,6) NOT NULL DEFAULT 1.000000,
-    output_multiplier DECIMAL(10,6) NOT NULL DEFAULT 2.000000,
+    input_multiplier  DECIMAL(10,6) NOT NULL DEFAULT 0.001000,
+    output_multiplier DECIMAL(10,6) NOT NULL DEFAULT 0.002000,
     input_price_per_1m  DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
     output_price_per_1m DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
     CONSTRAINT pk_credit_rates PRIMARY KEY (id),
@@ -84,6 +84,12 @@ CREATE TABLE IF NOT EXISTS credit_rates (
 
 ALTER TABLE credit_rates ADD COLUMN IF NOT EXISTS input_price_per_1m DECIMAL(10,4) NOT NULL DEFAULT 0.0000;
 ALTER TABLE credit_rates ADD COLUMN IF NOT EXISTS output_price_per_1m DECIMAL(10,4) NOT NULL DEFAULT 0.0000;
+
+-- Auto-calibrate multipliers to match 1 Credit = 0.01 THB (at 35.50 THB/USD) for all existing price entries
+UPDATE credit_rates 
+SET input_multiplier = (input_price_per_1m * 35.50) / 10000.0,
+    output_multiplier = (output_price_per_1m * 35.50) / 10000.0
+WHERE input_price_per_1m > 0 AND output_price_per_1m > 0;
 
 -- Daily Token Usage
 CREATE TABLE IF NOT EXISTS token_usage (

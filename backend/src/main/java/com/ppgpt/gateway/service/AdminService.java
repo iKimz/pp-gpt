@@ -547,13 +547,27 @@ public class AdminService {
 
                         String modelId = (String) m.get("modelId");
                         CreditRate rate = modelId != null ? creditRatesMap.get(modelId) : null;
-                        double inMult = (rate != null && rate.getInputMultiplier() != null) ? rate.getInputMultiplier().doubleValue() : 1.0;
-                        double outMult = (rate != null && rate.getOutputMultiplier() != null) ? rate.getOutputMultiplier().doubleValue() : 2.0;
-                        double credits = (currIn * inMult) + (currOut * outMult);
 
                         double inPrice1m = (rate != null && rate.getInputPricePer1m() != null) ? rate.getInputPricePer1m().doubleValue() : 0.0;
                         double outPrice1m = (rate != null && rate.getOutputPricePer1m() != null) ? rate.getOutputPricePer1m().doubleValue() : 0.0;
-                        double totalCostUsd = ((currIn * inPrice1m) + (currOut * outPrice1m)) / 1_000_000.0;
+
+                        double inMult, outMult;
+                        if (inPrice1m > 0 || outPrice1m > 0) {
+                            inMult = (inPrice1m * 35.50) / 10000.0;
+                            outMult = (outPrice1m * 35.50) / 10000.0;
+                        } else {
+                            inMult = (rate != null && rate.getInputMultiplier() != null) ? rate.getInputMultiplier().doubleValue() : 0.001;
+                            outMult = (rate != null && rate.getOutputMultiplier() != null) ? rate.getOutputMultiplier().doubleValue() : 0.002;
+                        }
+
+                        double credits = (currIn * inMult) + (currOut * outMult);
+
+                        double totalCostUsd;
+                        if (inPrice1m > 0 || outPrice1m > 0) {
+                            totalCostUsd = ((currIn * inPrice1m) + (currOut * outPrice1m)) / 1_000_000.0;
+                        } else {
+                            totalCostUsd = (credits * 0.01) / 35.50;
+                        }
 
                         aggRow.put("totalRequests", currReq);
                         aggRow.put("totalInputTokens", currIn);
@@ -627,13 +641,27 @@ public class AdminService {
                         long totalTok = currIn + currOut;
 
                         CreditRate rate = log.getModelId() != null ? creditRatesMap.get(log.getModelId()) : null;
-                        double inMult = (rate != null && rate.getInputMultiplier() != null) ? rate.getInputMultiplier().doubleValue() : 1.0;
-                        double outMult = (rate != null && rate.getOutputMultiplier() != null) ? rate.getOutputMultiplier().doubleValue() : 2.0;
-                        double credits = (currIn * inMult) + (currOut * outMult);
 
                         double inPrice1m = (rate != null && rate.getInputPricePer1m() != null) ? rate.getInputPricePer1m().doubleValue() : 0.0;
                         double outPrice1m = (rate != null && rate.getOutputPricePer1m() != null) ? rate.getOutputPricePer1m().doubleValue() : 0.0;
-                        double totalCostUsd = ((currIn * inPrice1m) + (currOut * outPrice1m)) / 1_000_000.0;
+
+                        double inMult, outMult;
+                        if (inPrice1m > 0 || outPrice1m > 0) {
+                            inMult = (inPrice1m * 35.50) / 10000.0;
+                            outMult = (outPrice1m * 35.50) / 10000.0;
+                        } else {
+                            inMult = (rate != null && rate.getInputMultiplier() != null) ? rate.getInputMultiplier().doubleValue() : 0.001;
+                            outMult = (rate != null && rate.getOutputMultiplier() != null) ? rate.getOutputMultiplier().doubleValue() : 0.002;
+                        }
+
+                        double credits = (currIn * inMult) + (currOut * outMult);
+
+                        double totalCostUsd;
+                        if (inPrice1m > 0 || outPrice1m > 0) {
+                            totalCostUsd = ((currIn * inPrice1m) + (currOut * outPrice1m)) / 1_000_000.0;
+                        } else {
+                            totalCostUsd = (credits * 0.01) / 35.50;
+                        }
 
                         row.put("totalRequests", currReq);
                         row.put("totalInputTokens", currIn);
