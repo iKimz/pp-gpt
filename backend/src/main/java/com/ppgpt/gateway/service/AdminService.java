@@ -549,15 +549,21 @@ public class AdminService {
                         double outMult = (rate != null && rate.getOutputMultiplier() != null) ? rate.getOutputMultiplier().doubleValue() : 2.0;
                         double credits = (currIn * inMult) + (currOut * outMult);
 
+                        double inPrice1m = (rate != null && rate.getInputPricePer1m() != null) ? rate.getInputPricePer1m().doubleValue() : 0.0;
+                        double outPrice1m = (rate != null && rate.getOutputPricePer1m() != null) ? rate.getOutputPricePer1m().doubleValue() : 0.0;
+                        double totalCostUsd = ((currIn * inPrice1m) + (currOut * outPrice1m)) / 1_000_000.0;
+
                         aggRow.put("totalInputTokens", currIn);
                         aggRow.put("totalOutputTokens", currOut);
                         aggRow.put("totalTokens", totalTok);
                         aggRow.put("totalCredits", Math.round(credits * 100.0) / 100.0);
+                        aggRow.put("totalCostUsd", Math.round(totalCostUsd * 10000.0) / 10000.0);
                     }
 
                     List<Map<String, Object>> aggregatedList = new ArrayList<>(aggregatedMap.values());
                     long totalInput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalInputTokens")).longValue()).sum();
                     long totalOutput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalOutputTokens")).longValue()).sum();
+                    double totalCostSum = aggregatedList.stream().mapToDouble(m -> ((Number) m.getOrDefault("totalCostUsd", 0.0)).doubleValue()).sum();
 
                     Map<String, Object> result = new HashMap<>();
                     result.put("startDate", start);
@@ -565,6 +571,7 @@ public class AdminService {
                     result.put("totalInputTokens", totalInput);
                     result.put("totalOutputTokens", totalOutput);
                     result.put("totalTokens", totalInput + totalOutput);
+                    result.put("totalCostUsd", Math.round(totalCostSum * 10000.0) / 10000.0);
                     result.put("metrics", aggregatedList);
                     result.put("items", aggregatedList);
                     return Mono.just(result);
@@ -617,15 +624,21 @@ public class AdminService {
                         double outMult = (rate != null && rate.getOutputMultiplier() != null) ? rate.getOutputMultiplier().doubleValue() : 2.0;
                         double credits = (currIn * inMult) + (currOut * outMult);
 
+                        double inPrice1m = (rate != null && rate.getInputPricePer1m() != null) ? rate.getInputPricePer1m().doubleValue() : 0.0;
+                        double outPrice1m = (rate != null && rate.getOutputPricePer1m() != null) ? rate.getOutputPricePer1m().doubleValue() : 0.0;
+                        double totalCostUsd = ((currIn * inPrice1m) + (currOut * outPrice1m)) / 1_000_000.0;
+
                         row.put("totalInputTokens", currIn);
                         row.put("totalOutputTokens", currOut);
                         row.put("totalTokens", totalTok);
                         row.put("totalCredits", Math.round(credits * 100.0) / 100.0);
+                        row.put("totalCostUsd", Math.round(totalCostUsd * 10000.0) / 10000.0);
                     }
 
                     List<Map<String, Object>> aggregatedList = new ArrayList<>(aggMap.values());
                     long totalInput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalInputTokens")).longValue()).sum();
                     long totalOutput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalOutputTokens")).longValue()).sum();
+                    double totalCostSum = aggregatedList.stream().mapToDouble(m -> ((Number) m.getOrDefault("totalCostUsd", 0.0)).doubleValue()).sum();
 
                     Map<String, Object> result = new HashMap<>();
                     result.put("startDate", start);
@@ -633,6 +646,7 @@ public class AdminService {
                     result.put("totalInputTokens", totalInput);
                     result.put("totalOutputTokens", totalOutput);
                     result.put("totalTokens", totalInput + totalOutput);
+                    result.put("totalCostUsd", Math.round(totalCostSum * 10000.0) / 10000.0);
                     result.put("metrics", aggregatedList);
                     result.put("items", aggregatedList);
                     return Mono.just(result);

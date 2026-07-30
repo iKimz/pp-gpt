@@ -86,7 +86,7 @@
 
     <div v-else class="space-y-6">
       <!-- Top Executive KPI Metric Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
         <div class="glass rounded-xl p-4 border border-[#e8e7f1]">
           <p class="text-xs font-semibold text-[#4d4732] uppercase tracking-wider">Total Tokens Consumed</p>
           <p class="text-2xl font-bold font-mono text-[#1a1b22] mt-1">
@@ -117,6 +117,14 @@
             {{ formatNumber(totals.totalCredits) }}
           </p>
           <span class="text-[11px] text-[#4d4732]">{{ uniqueGroupsCount }} groups, {{ uniqueModelsCount }} models</span>
+        </div>
+
+        <div class="glass rounded-xl p-4 border border-emerald-200 bg-emerald-50/20">
+          <p class="text-xs font-semibold text-emerald-800 uppercase tracking-wider">Est. Total Expenditure</p>
+          <p class="text-2xl font-bold font-mono text-emerald-700 mt-1">
+            ฿{{ totals.totalCostThb.toFixed(2) }}
+          </p>
+          <span class="text-[11px] text-emerald-600 font-mono">~${{ totals.totalCostUsd.toFixed(2) }} USD</span>
         </div>
       </div>
 
@@ -237,6 +245,9 @@
                 <th @click="sortBy('totalCredits')" class="text-right cursor-pointer hover:text-[#1a1b22]">
                   Total Credits {{ sortKey === 'totalCredits' ? (sortOrder === 1 ? '▲' : '▼') : '' }}
                 </th>
+                <th class="text-right text-emerald-700">
+                  Est. Cost (THB)
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -257,9 +268,12 @@
                 <td class="text-right font-mono font-bold text-[#705d00]">
                   {{ formatNumber(item.totalCredits) }}
                 </td>
+                <td class="text-right font-mono font-bold text-emerald-700">
+                  ฿{{ ((item.totalCostUsd != null ? item.totalCostUsd : item.totalCredits * 0.0003) * 35.50).toFixed(2) }}
+                </td>
               </tr>
               <tr v-if="analyticsData.length === 0">
-                <td colspan="6" class="text-center py-8 text-[#4d4732] text-sm">
+                <td colspan="7" class="text-center py-8 text-[#4d4732] text-sm">
                   No metric records found in `dashboard_metrics`.
                 </td>
               </tr>
@@ -364,9 +378,12 @@ const totals = computed(() => {
       acc.outputTokens += Number(curr.totalOutputTokens || 0)
       acc.totalTokens  += Number(curr.totalTokens || 0)
       acc.totalCredits += Number(curr.totalCredits || 0)
+      const costUsd = curr.totalCostUsd != null ? Number(curr.totalCostUsd) : (Number(curr.totalCredits || 0) * 0.0003)
+      acc.totalCostUsd += costUsd
+      acc.totalCostThb += costUsd * 35.50
       return acc
     },
-    { inputTokens: 0, outputTokens: 0, totalTokens: 0, totalCredits: 0 }
+    { inputTokens: 0, outputTokens: 0, totalTokens: 0, totalCredits: 0, totalCostUsd: 0, totalCostThb: 0 }
   )
 })
 
