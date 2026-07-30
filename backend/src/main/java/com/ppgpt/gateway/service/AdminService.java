@@ -532,6 +532,7 @@ public class AdminService {
                             row.put("groupName", groupName);
                             row.put("modelId", m.get("modelId"));
                             row.put("modelName", modelName);
+                            row.put("totalRequests", 0L);
                             row.put("totalInputTokens", 0L);
                             row.put("totalOutputTokens", 0L);
                             row.put("totalTokens", 0L);
@@ -539,6 +540,7 @@ public class AdminService {
                             return row;
                         });
 
+                        long currReq = ((Number) aggRow.get("totalRequests")).longValue() + 1L;
                         long currIn = ((Number) aggRow.get("totalInputTokens")).longValue() + inTok;
                         long currOut = ((Number) aggRow.get("totalOutputTokens")).longValue() + outTok;
                         long totalTok = currIn + currOut;
@@ -553,6 +555,7 @@ public class AdminService {
                         double outPrice1m = (rate != null && rate.getOutputPricePer1m() != null) ? rate.getOutputPricePer1m().doubleValue() : 0.0;
                         double totalCostUsd = ((currIn * inPrice1m) + (currOut * outPrice1m)) / 1_000_000.0;
 
+                        aggRow.put("totalRequests", currReq);
                         aggRow.put("totalInputTokens", currIn);
                         aggRow.put("totalOutputTokens", currOut);
                         aggRow.put("totalTokens", totalTok);
@@ -561,6 +564,7 @@ public class AdminService {
                     }
 
                     List<Map<String, Object>> aggregatedList = new ArrayList<>(aggregatedMap.values());
+                    long totalRequests = aggregatedList.stream().mapToLong(m -> ((Number) m.getOrDefault("totalRequests", 1L)).longValue()).sum();
                     long totalInput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalInputTokens")).longValue()).sum();
                     long totalOutput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalOutputTokens")).longValue()).sum();
                     double totalCostSum = aggregatedList.stream().mapToDouble(m -> ((Number) m.getOrDefault("totalCostUsd", 0.0)).doubleValue()).sum();
@@ -568,6 +572,7 @@ public class AdminService {
                     Map<String, Object> result = new HashMap<>();
                     result.put("startDate", start);
                     result.put("endDate", end);
+                    result.put("totalRequests", totalRequests);
                     result.put("totalInputTokens", totalInput);
                     result.put("totalOutputTokens", totalOutput);
                     result.put("totalTokens", totalInput + totalOutput);
@@ -608,6 +613,7 @@ public class AdminService {
                             m.put("groupName", groupName);
                             m.put("modelId", log.getModelId() != null ? log.getModelId() : "");
                             m.put("modelName", modelName);
+                            m.put("totalRequests", 0L);
                             m.put("totalInputTokens", 0L);
                             m.put("totalOutputTokens", 0L);
                             m.put("totalTokens", 0L);
@@ -615,6 +621,7 @@ public class AdminService {
                             return m;
                         });
 
+                        long currReq = ((Number) row.get("totalRequests")).longValue() + 1L;
                         long currIn = ((Number) row.get("totalInputTokens")).longValue() + inputEst;
                         long currOut = ((Number) row.get("totalOutputTokens")).longValue() + outputEst;
                         long totalTok = currIn + currOut;
@@ -628,6 +635,7 @@ public class AdminService {
                         double outPrice1m = (rate != null && rate.getOutputPricePer1m() != null) ? rate.getOutputPricePer1m().doubleValue() : 0.0;
                         double totalCostUsd = ((currIn * inPrice1m) + (currOut * outPrice1m)) / 1_000_000.0;
 
+                        row.put("totalRequests", currReq);
                         row.put("totalInputTokens", currIn);
                         row.put("totalOutputTokens", currOut);
                         row.put("totalTokens", totalTok);
@@ -636,6 +644,7 @@ public class AdminService {
                     }
 
                     List<Map<String, Object>> aggregatedList = new ArrayList<>(aggMap.values());
+                    long totalRequests = aggregatedList.stream().mapToLong(m -> ((Number) m.getOrDefault("totalRequests", 1L)).longValue()).sum();
                     long totalInput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalInputTokens")).longValue()).sum();
                     long totalOutput = aggregatedList.stream().mapToLong(m -> ((Number) m.get("totalOutputTokens")).longValue()).sum();
                     double totalCostSum = aggregatedList.stream().mapToDouble(m -> ((Number) m.getOrDefault("totalCostUsd", 0.0)).doubleValue()).sum();
@@ -643,6 +652,7 @@ public class AdminService {
                     Map<String, Object> result = new HashMap<>();
                     result.put("startDate", start);
                     result.put("endDate", end);
+                    result.put("totalRequests", totalRequests);
                     result.put("totalInputTokens", totalInput);
                     result.put("totalOutputTokens", totalOutput);
                     result.put("totalTokens", totalInput + totalOutput);
